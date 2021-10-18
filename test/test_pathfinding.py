@@ -1,3 +1,6 @@
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import unittest
 from graph_tool.all import load_graph
 from pathlib import Path
