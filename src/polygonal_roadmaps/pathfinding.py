@@ -4,6 +4,16 @@ from dataclasses import dataclass
 import numpy as np
 
 
+@dataclass(eq=True, frozen=True, init=True)
+class NodeConstraint:
+    agent:int
+    time:int
+    node:int
+
+
+class PathDoesNotExistException(ValueError):
+    pass
+
 class NavVisitor(AStarVisitor):
     def __init__(self, touched_v, touched_e, goal):
         self.touched_e = touched_e
@@ -29,7 +39,7 @@ class SpaceTimeVisitor(AStarVisitor):
         self.g.vp['t'] = self.g.new_vertex_property('int')
         self.g.ep['dist'] = self.g.new_edge_property('double')
         self.g.vp['cost'] = self.g.new_vertex_property('double')
-        # self.g.vp['dist'] = self.g.new_vertex_property('double')
+        self.g.vp['dist'] = self.g.new_vertex_property('double')
 
         self.target = goal
         for v in self.timeless.vertices():
@@ -40,8 +50,8 @@ class SpaceTimeVisitor(AStarVisitor):
         self.touched_e = self.g.new_edge_property('bool')
         self.touched_v = self.g.new_vertex_property('bool')
         self.limit=limit
-        self.nc = node_constraints if node_constraints else {}
-        self.ec = edge_constraints if edge_constraints else {}
+        self.nc = node_constraints if node_constraints else []
+        #self.ec = edge_constraints if edge_constraints else {}
 
     def get_node(self, t, index):
         for v in self.g.vertices():
@@ -49,10 +59,13 @@ class SpaceTimeVisitor(AStarVisitor):
                 return v
         return None
 
+    def node_violates_constraints(self, t, index):
+        violated = [c for c in self.nc if c.node == index and c.time == t]
+        return len(violated)
+
     def add_vertex_if_not_exists(self, t, index):
-        if t in self.nc:
-            if index in self.nc[t]:
-                return None
+        if self.node_violates_constraints(t, index):
+            return None
         n = self.get_node(t, index)
         if n is not None:
             return n
@@ -73,13 +86,8 @@ class SpaceTimeVisitor(AStarVisitor):
             e = self.g.add_edge(v1, v2)
             self.g.ep['dist'][e] = .1
             return e
-
-        if t in self.ec:
-            if (i1, i2) in self.ec[t]:
-                return None
-            if (i2, i1) in self.ec[t]:
-                return None
         
+        # print(f'v1: {v1}:{i1}, v2: {v2}:{i2}, timeless: {self.timeless.edge(i1, i2)}')
         e = self.g.add_edge(v1, v2)
         self.g.ep['dist'][e] = self.timeless.ep['dist'][self.timeless.edge(i1, i2)]
 
@@ -117,12 +125,14 @@ class SpaceTimeVisitor(AStarVisitor):
             raise StopSearch()
 
 
-def check_node_constraints(g, v, nc):
+def violated_node_constraints(g, v: int, nc: list) -> list:
     t = g.vp['t'][v]
     i = g.vp['index'][v]
-    if t not in nc:
-        return False
-    return i in nc[t]
+    violated = []
+    for constraint in nc:
+        if constraint.t == t and constraint.node == i:
+            violated.append(constraint)
+    return violated
 
 
 def pred_to_list(g, pred, start, goal):
@@ -141,6 +151,8 @@ def pred_to_list(g, pred, start, goal):
         p = pred[p]
         l.append(p)
     l.reverse()
+    if l[0] != start or l[-1] != goal:
+        raise PathDoesNotExistException()
     return l
 
 
@@ -205,6 +217,8 @@ def find_constrained_path(g, sn, gn, edge_constraints=None, node_constraints=Non
         cost_map=nv.g.vp['cost'],
         dist_map=nv.g.vp['dist']
     )
+    if nv.timed_target_node is None:
+        raise PathDoesNotExistException()
 
     l = pred_to_list(nv.g, pred, sn, nv.timed_target_node)
     return [nv.g.vp["index"][v] for v in l]
@@ -231,7 +245,7 @@ def compute_node_conflicts(paths: list, limit:int=10) -> list:
     conflicts = []
     for (t, node), agents in node_occupancy.items():
         if len(agents) > 1:
-            conflicts.append((CBSConstraint(time=t, node=node, agent=agent) for agent in agents))
+            conflicts.append((NodeConstraint(time=t, node=node, agent=agent) for agent in agents))
     return conflicts
 
 def compute_node_occupancy(paths: list, limit:int=10) -> dict:
@@ -257,21 +271,15 @@ def compute_edge_conflicts(paths, limit=10):
                 if node_occupancy[t-1, node] != i:
                     c = (t, node, i)
                     if t > 1:
-                        conflicts.append( (CBSConstraint(time=t, node=node, agent=i), CBSConstraint(time=t-1, node=node, agent=node_occupancy[t-1,node][0])) )
+                        conflicts.append( (NodeConstraint(time=t, node=node, agent=i), NodeConstraint(time=t-1, node=node, agent=node_occupancy[t-1,node][0])) )
                     else:
-                        conflicts.append( (CBSConstraint(time=t, node=node, agent=i)) )
+                        conflicts.append( (NodeConstraint(time=t, node=node, agent=i)) )
     return conflicts
 
 def sum_of_cost(paths):
     if paths is None or None in paths:
         return np.inf
     return sum([len(p) for p in paths])
-
-@dataclass(eq=True, frozen=True, init=True)
-class CBSConstraint:
-    agent:int
-    time:int
-    node:int
 
 
 class CBSNode:
