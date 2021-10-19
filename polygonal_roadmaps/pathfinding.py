@@ -51,6 +51,7 @@ class SpaceTimeVisitor(AStarVisitor):
         self.touched_v = self.g.new_vertex_property('bool')
         self.limit=limit
         self.nc = node_constraints if node_constraints else []
+        self.timed_target_node = None
         #self.ec = edge_constraints if edge_constraints else {}
 
     def get_node(self, t, index):
@@ -245,8 +246,8 @@ def compute_node_conflicts(paths: list, limit:int=10) -> list:
     conflicts = []
     for (t, node), agents in node_occupancy.items():
         if len(agents) > 1:
-            conflicts.append((NodeConstraint(time=t, node=node, agent=agent) for agent in agents))
-    return conflicts
+            conflicts.append(frozenset([NodeConstraint(time=t, node=node, agent=agent) for agent in agents]))
+    return frozenset(conflicts)
 
 def compute_node_occupancy(paths: list, limit:int=10) -> dict:
     node_occupancy = {}
@@ -271,29 +272,37 @@ def compute_edge_conflicts(paths, limit=10):
                 if node_occupancy[t-1, node] != i:
                     c = (t, node, i)
                     if t > 1:
-                        conflicts.append( (NodeConstraint(time=t, node=node, agent=i), NodeConstraint(time=t-1, node=node, agent=node_occupancy[t-1,node][0])) )
+                        conflicts.append( frozenset( [NodeConstraint(time=t, node=node, agent=i), NodeConstraint(time=t-1, node=node, agent=node_occupancy[t-1,node][0])] ) )
                     else:
-                        conflicts.append( (NodeConstraint(time=t, node=node, agent=i)) )
-    return conflicts
+                        conflicts.append( frozenset([NodeConstraint(time=t, node=node, agent=i)]) )
+    return frozenset(conflicts)
+
 
 def sum_of_cost(paths):
-    if paths is None or None in paths:
+    if paths is None or None in paths or [] in paths:
         return np.inf
     return sum([len(p) for p in paths])
 
 
 class CBSNode:
-    def __init__(self, constraints:frozenset=frozenset()):
+    def __init__(self, constraints:frozenset=None):
         self.children = ()
-        self.fitness = None
+        self.fitness = np.inf
         self.paths = None
-        self.conflicts = None
+        self.conflicts = None # conflicts are found after plannig
+        self.final = None
+        self.constraints = constraints # constraints are used for planning
+        if self.constraints is None:
+            self.constraints = frozenset()
         self.open = True
 
-    def iter(self):
+    def __iter__(self):
         yield self
         for child in self.children:
-            child.iter()
+            yield from child
+    
+    def __str__(self):
+        return f'{self.constraints}::[ {",".join([str(x) for x in self.children])} ]'
     
     
 class CBS:
@@ -303,47 +312,84 @@ class CBS:
         self.limit = limit
         self.root = CBSNode(constraints=agent_constraints)
         self.cache = {}
-        self.agents = (i for i, _ in enumerate(start_goal))
+        self.agents = tuple([i for i, _ in enumerate(start_goal)])
+        self.cache = {}
+        self.best = None
 
     def run(self):
         self.cache = {}
         self.best = None
-        done = True
-        while not done:
-            done = not self.step()
-        return self.best
+        done = False
+        for _ in range(self.
+            limit**len(self.agents)):
+            if not self.step():
+                break
+        if self.best is None:
+            raise PathDoesNotExistException
+        return self.best.solution
 
     def step(self):
-            for node in self.root.iter():
-                if node.open:
-                    self.evaluate_node(node)
-                    return True
-            return False
+        for node in self.root:
+            if node.open:
+                node = self.evaluate_node(node)
+                node.open = False
+                return True
+        # return false if all nodes are already closed
+        return False
 
     def evaluate_node(self, node):
         node.solution = []
         for agent in self.agents:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
-            nc = frozenset(c for c in node.constraints if c.agent == agent)
+            nc = frozenset([c for c in node.constraints if c.agent == agent])
             if nc not in self.cache:
                 sn, gn = self.start_goal[agent]
-                self.cache[nc] = find_constrained_path(self.g, sn, gn, node_constraints=nc, limit=self.limit)
-            node.solution.append(self.cache[nc])
+                try:
+                    self.cache[agent, nc] = find_constrained_path(self.g, sn, gn, node_constraints=nc, limit=self.limit)
+                except PathDoesNotExistException:
+                    self.cache[agent, nc] = None
+            node.solution.append(self.cache[agent, nc])
 
         node.fitness = sum_of_cost(node.solution)
-        if node.fitness > len(node.solution) * self.limit:
+        if node.fitness > len(self.agents) * self.limit:
+            # if no valid solution exists, this node is final
             node.final = True
-            node.open = False
-            return
-        node.conflicts = compute_node_conflicts(node.solution)
-        if not len(node.conflicts):
-            node.conflitcs = compute_edge_conflicts(node.solution)
+            return node
         
-        if len(node.conflicts):
-            node.children = frozenset(CBSNode(constraints=c) for c in node.conflicts[0])
-        else:
-            if self.best is None or node.fitness < self.best.fitness:
-                self.best = node
-        node.open = False
-        
+        if self.best is not None and node.fitness > self.best.fitness:
+            # if we add conflicts, the path only gets longer, hence this is not the optimal solution
+            node.final = True
+            return node
+            
+        # this function calculates the children of the node and
+        # in case we do not have node conflicts, we compute the edge conflicts
+        node.conflicts = frozenset(compute_edge_conflicts(node.solution) | compute_edge_conflicts(node.solution))
     
+        if not len(node.conflicts):
+            node.final = True
+            self.update_best(node)
+            return node
+        
+        children = []
+        for conflict in node.conflicts:
+            for constraint in conflict:
+                if constraint in node.constraints:
+                    continue
+                children.append(CBSNode(constraints = frozenset({constraint} | node.constraints)))
+            if len(children):
+                node.children = tuple(children)
+                return node
+            
+        node.final = True
+        return node
+
+                
+    def update_best(self, node):
+        if self.best is None or node.fitness < self.best.fitness:
+            self.best = node
+        return node
+
+if __name__ == "__main__":
+    g = graph_tool.load_graph('test/resources/test_graph.xml')
+    cbs = CBS(g, [(0,5), (5,0)], limit=100)
+    result = cbs.run()
