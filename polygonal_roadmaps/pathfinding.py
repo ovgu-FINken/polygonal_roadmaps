@@ -1,7 +1,8 @@
-from graph_tool.all import AStarVisitor, StopSearch, astar_search
-import graph_tool
+from graph_tool.all import AStarVisitor, StopSearch, astar_search, Graph, load_graph
 from dataclasses import dataclass
 import numpy as np
+import networkx as nx
+from itertools import groupby
 
 
 @dataclass(eq=True, frozen=True, init=True)
@@ -34,7 +35,7 @@ class NavVisitor(AStarVisitor):
 class SpaceTimeVisitor(AStarVisitor):
     def __init__(self, generating_graph, goal, limit=100, node_constraints=None, edge_constraints=None):
         self.timeless = generating_graph
-        self.g = graph_tool.Graph(directed=True)
+        self.g = Graph(directed=True)
         self.g.vp['index'] = self.g.new_vertex_property('int')
         self.g.vp['t'] = self.g.new_vertex_property('int')
         self.g.ep['dist'] = self.g.new_edge_property('double')
@@ -278,16 +279,26 @@ def compute_edge_conflicts(paths, limit=10):
     return frozenset(conflicts)
 
 
-def sum_of_cost(paths):
+def sum_of_cost(paths, graph=None):
     if paths is None or None in paths or [] in paths:
         return np.inf
-    return sum([len(p) for p in paths])
+    if graph is None:
+        return sum([len(p) for p in paths])
+    cost = 0
+    for path in paths:
+        for n1, n2 in zip(path[:-1], path[1:]):
+            if n1 == n2:
+                cost += 0.1
+            else:
+                cost += graph.ep['dist'][graph.edge(n1, n2)]
+    return cost
 
 
 class CBSNode:
     def __init__(self, constraints:frozenset=None):
         self.children = ()
         self.fitness = np.inf
+        self.valid = False
         self.paths = None
         self.conflicts = None # conflicts are found after plannig
         self.final = None
@@ -304,9 +315,39 @@ class CBSNode:
     def __str__(self):
         return f'{self.constraints}::[ {",".join([str(x) for x in self.children])} ]'
     
+    def shorthand(self):
+        result = f"[constraints::"
+        d = {}
+        for x in self.constraints:
+            if x.agent not in d:
+                d[x.agent] = [(x.time, x.node)]
+            else:
+                d[x.agent].append((x.time, x.node))
+        for a, group in d.items():
+            result += f"agent {a}::{{"
+            stuff = [f'(t: {t}, n: {n})' for t, n in sorted(group)]
+            result += ",".join(stuff)
+
+            result += "}"
+        result += "]"
+        if not self.conflicts:
+            return result
+        return result + f'conflicts : {len(self.conflicts)}'
+
+    def graph(self):
+        graph = nx.DiGraph()
+        for i, x in enumerate(self):
+            graph.add_node(i, label=x.shorthand(), weight=len(x.constraints), fitness=x.fitness, valid=x.valid, solution=str(x.solution), conflicts=str(x.conflicts))
+            x._index = i
+        for x in self:
+            for y in x.children:
+                graph.add_edge(x._index, y._index)
+        return graph
+
+    
     
 class CBS:
-    def __init__(self, g, start_goal, agent_constraints=None, limit=10):
+    def __init__(self, g, start_goal, agent_constraints=None, limit=10, max_iter=10000):
         self.start_goal = start_goal
         self.g = g
         self.limit = limit
@@ -315,13 +356,12 @@ class CBS:
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
         self.cache = {}
         self.best = None
+        self.max_iter = max_iter
 
     def run(self):
         self.cache = {}
         self.best = None
-        done = False
-        for _ in range(self.
-            limit**len(self.agents)):
+        for self.iteration_number in range(self.max_iter):
             if not self.step():
                 break
         if self.best is None:
@@ -329,7 +369,8 @@ class CBS:
         return self.best.solution
 
     def step(self):
-        for node in self.root:
+        canditates = [node for node in self.root if node.open]
+        for node in canditates:
             if node.open:
                 node = self.evaluate_node(node)
                 node.open = False
@@ -350,7 +391,7 @@ class CBS:
                     self.cache[agent, nc] = None
             node.solution.append(self.cache[agent, nc])
 
-        node.fitness = sum_of_cost(node.solution)
+        node.fitness = sum_of_cost(node.solution, graph=self.g)
         if node.fitness > len(self.agents) * self.limit:
             # if no valid solution exists, this node is final
             node.final = True
@@ -363,18 +404,18 @@ class CBS:
             
         # this function calculates the children of the node and
         # in case we do not have node conflicts, we compute the edge conflicts
-        node.conflicts = frozenset(compute_edge_conflicts(node.solution) | compute_edge_conflicts(node.solution))
+        node.conflicts = frozenset(compute_node_conflicts(node.solution) | compute_edge_conflicts(node.solution))
     
         if not len(node.conflicts):
+            node.valid = True
             node.final = True
             self.update_best(node)
             return node
         
         children = []
-        for conflict in node.conflicts:
+        for conflict in sorted(node.conflicts, key=len, reverse=True):
             for constraint in conflict:
-                if constraint in node.constraints:
-                    continue
+                assert constraint not in node.constraints
                 children.append(CBSNode(constraints = frozenset({constraint} | node.constraints)))
             if len(children):
                 node.children = tuple(children)
@@ -390,6 +431,6 @@ class CBS:
         return node
 
 if __name__ == "__main__":
-    g = graph_tool.load_graph('test/resources/test_graph.xml')
-    cbs = CBS(g, [(0,5), (5,0)], limit=100)
+    g = load_graph('test/resources/test_graph.xml')
+    cbs = CBS(g, [(0,5), (5,0)], limit=10)
     result = cbs.run()
