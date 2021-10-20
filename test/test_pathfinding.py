@@ -2,7 +2,7 @@ import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import unittest
-from graph_tool import load_graph
+import networkx as nx
 from pathlib import Path
 import os
 import numpy as np
@@ -10,16 +10,19 @@ import numpy as np
 
 from polygonal_roadmaps import pathfinding
 
+def load_graph(filename):
+    return nx.read_graphml(filename)
+
 class TestLowLevelSearch(unittest.TestCase):
     def setUp(self):
-        graph_file = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "test_graph.xml"
-        self.graph = load_graph(str(graph_file))
+        self.graph = pathfinding.gen_example_graph(5,2)
+        
 
     def testSumOfCost(self):
-        result = pathfinding.sum_of_cost([[2], [2,3]])
+        result = pathfinding.sum_of_cost([['b'], ['b', 'c']])
         self.assertEqual(result, 3)
         
-        result = pathfinding.sum_of_cost([[], [2,3]])
+        result = pathfinding.sum_of_cost([[], ['2','3']])
         self.assertEqual(result, np.inf)
         
         result = pathfinding.sum_of_cost(None)
@@ -28,8 +31,8 @@ class TestLowLevelSearch(unittest.TestCase):
         result = pathfinding.sum_of_cost([[2,3], None])
         self.assertEqual(result, np.inf)
         
-        result = pathfinding.sum_of_cost([[0,1,2,3,4,5],[2,2]], graph=self.graph)
-        self.assertAlmostEqual(result, 6.3, places=1)
+        result = pathfinding.sum_of_cost(['abcde','cc'], graph=self.graph)
+        self.assertAlmostEqual(result, 4.1, places=1)
 
     def testPadPath(self):
         path = [1,2,3]
@@ -37,61 +40,44 @@ class TestLowLevelSearch(unittest.TestCase):
         self.assertEqual(len(path), 100)
 
     def testAStar(self):
-        path = pathfinding.find_path_astar(self.graph, 0, 5)
-        expected = [0, 1, 4, 5]
+        path = pathfinding.spatial_astar(self.graph, 'a', 'e')
+        expected = list('abcde')
         self.assertEqual(path, expected)
         
-        path = pathfinding.find_path_astar(self.graph, 2, 0)
-        expected = [2, 1, 0]
+        path = pathfinding.spatial_astar(self.graph, 'c', 'a')
+        expected = list('cba')
         self.assertEqual(path, expected)
 
-        exception_thrown = False
-        try:
-            path = pathfinding.find_path_astar(self.graph, 0, 6)
-        except pathfinding.PathDoesNotExistException:
-            exception_thrown = True
-        self.assertEqual(exception_thrown, True, "find_path_astar should raise PathDoesNotExistException, if the path is not found")
+
+        self.assertRaises(nx.NodeNotFound, pathfinding.spatial_astar, self.graph, 'a', 'Z')
+        self.graph.add_node('Z', pos=(0.5,0.5))
+        self.assertRaises(nx.NetworkXNoPath, pathfinding.spatial_astar, self.graph, 'a', 'Z')
+
 
     def testSpaceTimeAStar(self):
-        path = pathfinding.find_constrained_path(self.graph, 0, 5)
-        expected = [0, 1, 4, 5]
+        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', None)
+        expected = list('abcde')
         self.assertEqual(path, expected)
-
-        path = pathfinding.find_constrained_path(self.graph, 0, 5, node_constraints=[pathfinding.NodeConstraint(agent=0, time=1, node=1)])
-        expected = [0, 0, 1, 4, 5]
-        self.assertEqual(path, expected)
-
-        path = pathfinding.find_constrained_path(self.graph, 0, 5, node_constraints=[pathfinding.NodeConstraint(agent=0, time=2, node=4)])
-        expected = ([0, 0, 1, 4, 5], [0, 1, 1, 4, 5])
-        self.assertTrue(path in expected)
-
-        self.assertRaises(pathfinding.PathDoesNotExistException, pathfinding.find_constrained_path, self.graph, 0, 1, node_constraints=[pathfinding.NodeConstraint(agent=0, time=t, node=1) for t in range(100)])
         
-        
-        constraints = [ pathfinding.NodeConstraint(agent=0, time=t, node=0) for t in range(1, 100) ]
-        constraints += [ pathfinding.NodeConstraint(time=t, node=1, agent=0) for t in range(2, 100)]
-        constraints += [
-            pathfinding.NodeConstraint(agent=0, time=1, node=4),
-            pathfinding.NodeConstraint(agent=0, time=2, node=4),
-
-        ]
-        path = pathfinding.find_constrained_path(self.graph, 0, 5, node_constraints=[pathfinding.NodeConstraint(agent=0, time=1, node=0), pathfinding.NodeConstraint(agent=0, time=1, node=0)])
-        expected = [0, 1, 2, 3, 4, 5]
+        path = pathfinding.spacetime_astar(self.graph, 'c', 'a', None)
+        expected = list('cba')
         self.assertEqual(path, expected)
 
 
+        self.assertRaises(nx.NodeNotFound, pathfinding.spacetime_astar, self.graph, 'a', 'Z', None)
+        self.graph.add_node('Z', pos=(0.5,0.5))
+        self.assertRaises(nx.NetworkXNoPath, pathfinding.spacetime_astar, self.graph, 'a', 'Z', None), None
+        
 
-        exception_thrown = False
-        try:
-            path = pathfinding.find_constrained_path(self.graph, 0, 6, node_constraints=[pathfinding.NodeConstraint(agent=0, time=1, node=1)])
-        except pathfinding.PathDoesNotExistException:
-            exception_thrown = True
-        self.assertEqual(exception_thrown, True, "find_path_astar should raise PathDoesNotExistException, if the path is not found")
+        cost = pathfinding.compute_cost(self.graph, 'e')
+        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', cost, node_constraints=[('b', 1)])
+        expected = list('aabcde')
+        self.assertEqual(path, expected)
+        
 
 class TestCBS(unittest.TestCase):
     def setUp(self):
-        graph_file = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "test_graph.xml"
-        self.graph = load_graph(str(graph_file))
+        self.graph = pathfinding.gen_example_graph(5,2)
         
     def test_compute_node_conflicts(self):
         path1 = [1,2]
@@ -146,8 +132,8 @@ class TestCBS(unittest.TestCase):
 
 
     def testNonValidPath(self):
-        cbs = pathfinding.CBS(self.graph, [(0,6)])
-        self.assertRaises(pathfinding.PathDoesNotExistException, cbs.run)
+        cbs = pathfinding.CBS(self.graph, [('a','Z')])
+        self.assertRaises(Exception, cbs.run)
     
     def testCBSstep(self):
         cbs = pathfinding.CBS(self.graph, [(0,5), (5,0)], limit=100)
