@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 import numpy as np
 import networkx as nx
-from itertools import groupby
 from networkx.algorithms.shortest_paths.weighted import _weight_function
 from heapq import heappush, heappop
 from itertools import count
+from collections import deque
 
 
 def gen_example_graph(a, b):
@@ -58,9 +58,6 @@ def pred_to_list(g, pred, start, goal):
         raise nx.NetworkXNoPath('no path could be found')
     return l
 
-def find_spacetime_path(g, sn, node_constraints=None, limit=None):
-    pass
-
 def pad_path(path: list, limit=10) -> list:
     return path + [path[-1] for _ in range(limit- len(path))]
 
@@ -93,10 +90,10 @@ def compute_edge_conflicts(paths, limit=10):
             if t < 1:
                 continue
             if (t-1, node) in node_occupancy.keys():
-                if node_occupancy[t-1, node] != i:
-                    c = (t, node, i)
+                j = node_occupancy[t-1, node][0]
+                if j != i:
                     if t > 1:
-                        conflicts.append( frozenset( [NodeConstraint(time=t, node=node, agent=i), NodeConstraint(time=t-1, node=node, agent=node_occupancy[t-1,node][0])] ) )
+                        conflicts.append( frozenset( [NodeConstraint(time=t, node=node, agent=i), NodeConstraint(time=t-1, node=node, agent=j)] ) )
                     else:
                         conflicts.append( frozenset([NodeConstraint(time=t, node=node, agent=i)]) )
     return frozenset(conflicts)
@@ -236,6 +233,7 @@ class CBSNode:
         self.paths = None
         self.conflicts = None # conflicts are found after plannig
         self.final = None
+        self.solution = None
         self.constraints = constraints # constraints are used for planning
         if self.constraints is None:
             self.constraints = frozenset()
@@ -248,6 +246,31 @@ class CBSNode:
     
     def __str__(self):
         return f'{self.constraints}::[ {",".join([str(x) for x in self.children])} ]'
+
+    def tuple_repr(self):
+        conflicts = len(self.conflicts) if self.conflicts else 0
+        constraints = len(self.constraints) if self.constraints else 0
+        return self.fitness, conflicts, constraints
+    
+    def __eq__(self, other):
+        return self.tuple_repr() == other.tuple_repr()
+    
+    def __neq__(self, other):
+        return self.tuple_repr() != other.tuple_repr()
+    
+    def __lt__(self, other):
+        return self.tuple_repr() < other.tuple_repr()
+    
+    def __le__(self, other):
+        return self.tuple_repr() <= other.tuple_repr()
+    
+    def __gt__(self, other):
+        return self.tuple_repr() > other.tuple_repr()
+    
+    def __ge__(self, other):
+        return self.tuple_repr() >= other.tuple_repr()
+
+    
     
     def shorthand(self):
         result = f"[constraints::"
@@ -271,7 +294,16 @@ class CBSNode:
     def graph(self):
         graph = nx.DiGraph()
         for i, x in enumerate(self):
-            graph.add_node(i, label=x.shorthand(), weight=len(x.constraints), fitness=x.fitness, valid=x.valid, solution=str(x.solution), conflicts=str(x.conflicts))
+            graph.add_node(
+                i,
+                label=x.shorthand(),
+                weight=len(x.constraints),
+                fitness=x.fitness,
+                valid=x.valid,
+                solution=str(x.solution),
+                conflicts=str(x.conflicts),
+                open=x.open
+            )
             x._index = i
         for x in self:
             for y in x.children:
@@ -289,13 +321,32 @@ class CBS:
         self.cache = {}
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
         self.cache = {}
+        self.costs = { agent: compute_cost(self.g, start_goal[agent][1], limit=limit) for agent in self.agents}
         self.best = None
         self.max_iter = max_iter
+        self.iteration_counter = 0
+        self.duplicate_cache = set()
+        self.duplicate_counter = 0
 
-    def run(self):
+    def setup(self):
         self.cache = {}
         self.best = None
-        for self.iteration_number in range(self.max_iter):
+        self.open = []
+        self.evaluate_node(self.root)
+        self.push(self.root)
+
+    def push(self, node):
+        heappush(self.open, node)
+
+    def pop(self):
+        node = heappop(self.open)
+        node.open = False
+        return node
+
+
+    def run(self):
+        self.setup()
+        for _ in range(self.max_iter):
             if not self.step():
                 break
         if self.best is None:
@@ -303,12 +354,14 @@ class CBS:
         return self.best.solution
 
     def step(self):
-        canditates = [node for node in self.root if node.open]
-        for node in canditates:
-            if node.open:
-                node = self.evaluate_node(node)
-                node.open = False
-                return True
+        if self.open:
+            self.iteration_counter += 1
+            node = self.pop()
+            for child in node.children:
+                child = self.evaluate_node(child)
+                child.open = False
+                self.push(child)
+            return True
         # return false if all nodes are already closed
         return False
 
@@ -316,12 +369,12 @@ class CBS:
         node.solution = []
         for agent in self.agents:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
-            nc = frozenset([c for c in node.constraints if c.agent == agent])
+            nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
             if nc not in self.cache:
                 sn, gn = self.start_goal[agent]
                 try:
-                    self.cache[agent, nc] = find_spacetime_path(self.g, sn, gn, node_constraints=nc, limit=self.limit)
-                except nx.NetworkXNoPath():
+                    self.cache[agent, nc] = spacetime_astar(self.g, sn, gn, self.costs[agent], node_constraints=nc, limit=self.limit)
+                except nx.NetworkXNoPath:
                     self.cache[agent, nc] = None
             node.solution.append(self.cache[agent, nc])
 
@@ -335,25 +388,38 @@ class CBS:
             # if we add conflicts, the path only gets longer, hence this is not the optimal solution
             node.final = True
             return node
-            
-        # this function calculates the children of the node and
-        # in case we do not have node conflicts, we compute the edge conflicts
-        node.conflicts = frozenset(compute_node_conflicts(node.solution) | compute_edge_conflicts(node.solution))
-    
+
+        node.conflicts = set()
+        #node.conflicts = frozenset(set( conflict for conflict in compute_node_conflicts(node.solution)) | set(conflict for conflict in compute_edge_conflic
+        for conflict in compute_node_conflicts(node.solution):
+            node.conflicts |= conflict
+        
+        for conflict in compute_edge_conflicts(node.solution):
+            node.conflicts |= conflict
+
         if not len(node.conflicts):
             node.valid = True
             node.final = True
             self.update_best(node)
             return node
-        
+        # filter out conflicts that are already in the constraints (happens if the conflict is after the goal is met)
+        node.conflicts = set(c for c in node.conflicts if c not in node.constraints)
+    
         children = []
-        for conflict in sorted(node.conflicts, key=len, reverse=True):
-            for constraint in conflict:
-                assert constraint not in node.constraints
+        for constraint in node.conflicts:
+            if constraint in node.constraints:
+                # print(f"constraint: {constraint}, NC: {node.constraints}")
+                continue
+            constraints = frozenset({constraint} | node.constraints)
+            if constraints not in self.duplicate_cache:
                 children.append(CBSNode(constraints = frozenset({constraint} | node.constraints)))
-            if len(children):
-                node.children = tuple(children)
-                return node
+                self.duplicate_cache.add(constraints)
+            else:
+                self.duplicate_counter += 1
+
+        if len(children):
+            node.children = tuple(children)
+            return node
             
         node.final = True
         return node
@@ -361,6 +427,7 @@ class CBS:
                 
     def update_best(self, node):
         if self.best is None or node.fitness < self.best.fitness:
+            print(f'Found new best solution at iteration {self.iteration_counter}.')
             self.best = node
         return node
 

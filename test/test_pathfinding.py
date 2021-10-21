@@ -74,6 +74,17 @@ class TestLowLevelSearch(unittest.TestCase):
         expected = list('aabcde')
         self.assertEqual(path, expected)
         
+        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', cost, node_constraints=[('c', 2)])
+        expected = [ list('aabcde'), list('abfgde')]
+        self.assertIn(path, expected)
+        
+        cost = pathfinding.compute_cost(self.graph, 'b')
+        path = pathfinding.spacetime_astar(self.graph, 'd', 'b', cost, node_constraints=[('b', 3)])
+        expected = list('dcb')
+        self.assertEqual(path, expected)
+
+
+        
 
 class TestCBS(unittest.TestCase):
     def setUp(self):
@@ -117,7 +128,7 @@ class TestCBS(unittest.TestCase):
             frozenset([ 
                 frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=2)]),
                 frozenset([pathfinding.NodeConstraint(agent=0, time=2, node=3), pathfinding.NodeConstraint(agent=1, time=1, node=3)])
-            ])
+            ])          
         )
 
         #swapping conflict
@@ -132,21 +143,20 @@ class TestCBS(unittest.TestCase):
 
 
     def testNonValidPath(self):
-        cbs = pathfinding.CBS(self.graph, [('a','Z')])
-        self.assertRaises(Exception, cbs.run)
+        # when the node is not within the graph, an exception is raised, because cost computation fails
+        self.assertRaises(nx.NodeNotFound, pathfinding.CBS, self.graph, [('a','Z')])
+
     
-    def testCBSstep(self):
-        cbs = pathfinding.CBS(self.graph, [(0,5), (5,0)], limit=100)
+    def testCBSsetup(self):
+        cbs = pathfinding.CBS(self.graph, [('a','e'), ('e','a')], limit=15)
+        cbs.setup()
         # the first step should expand the root node of the constraint tree
-        self.assertTrue(cbs.root.open)
-        cbs.step()
         self.assertFalse(cbs.root.open)
         self.assertLess(cbs.root.fitness, 2 * 100) # fitness should be less than agents * limit
         # our example has conflicts, so the root node should not be the final node
-        self.assertEqual(cbs.root.solution, [[0,1,4,5], [5,4,1,0]])
+        self.assertEqual(cbs.root.solution, [(list("abcde")), list("edcba")])
         expected = frozenset([
-            frozenset([pathfinding.NodeConstraint(agent=0, time=2, node=4), pathfinding.NodeConstraint(agent=1, time=1, node=4)]),
-            frozenset([pathfinding.NodeConstraint(agent=1, time=2, node=1), pathfinding.NodeConstraint(agent=0, time=1, node=1)])
+            pathfinding.NodeConstraint(agent=0, time=2, node='c'), pathfinding.NodeConstraint(agent=1, time=2, node='c')
         ])
         self.assertEqual(cbs.root.conflicts, expected)
         
@@ -172,24 +182,24 @@ class TestCBS(unittest.TestCase):
         self.assertEqual(traversal, [1,2,4,3,5])
 
     def testCBSNoConflict(self):
-        cbs = pathfinding.CBS(self.graph, [(0,5), (2,3)], limit=100)
+        cbs = pathfinding.CBS(self.graph, [('b', 'e'), ('g','a')], limit=15)
         try:
             best = cbs.run()
         except pathfinding.PathDoesNotExistException:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
-        self.assertEqual(cbs.root.solution, [[0,1,4,5],[2,3]])
+        self.assertEqual(cbs.root.solution, [list('bcde'),list('gfba')])
         self.assertEqual(cbs.root.conflicts, frozenset())
         self.assertTrue(cbs.root.final, "The root node should be the final node, as there are no conflicts")
 
 
-#    def testCBSrun(self):
-#        cbs = pathfinding.CBS(self.graph, [(0,5), (5,0)], limit=12)
-#        exception_raised = False
-#        try:
-#            best = cbs.run()
-#        except pathfinding.PathDoesNotExistException:
-#            exception_raised = True
-#        
-#
-#        self.assertFalse(exception_raised, msg="exception should not be raised, as path is valid")
-#        self.assertLessEqual(best.fitness, pathfinding.sum_of_cost([[0,1,1,4,5],[5,4,3,2,1,0]], graph=self.graph))
+    def testCBSrun(self):
+        cbs = pathfinding.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=12)
+        exception_raised = False
+        try:
+            best = cbs.run()
+        except nx.NetworkXNoPath:
+            exception_raised = True
+        
+
+        self.assertFalse(exception_raised, msg="exception should not be raised, as path is valid")
+        self.assertIn(best, ( [['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']], [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]) )
