@@ -115,12 +115,11 @@ def temporal_node_list(G, limit, node_constraints):
 
 def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, return_graph=False):
     # we search the path one time with normal A*, so we know that all nodes exist and are connected
-    spatial_path = spatial_astar(G, source, target)
-    # if the path is longer than needed
-    if len(spatial_path) > limit:
-        raise nx.NetworkXNoPath()
     if node_constraints is None:
-        return spatial_path
+        spatial_path = spatial_astar(G, source, target)
+        if len(spatial_path) > limit:
+            raise nx.NetworkXNoPath()
+        return spatial_astar(G, source, target)
 
     temporal_graph = nx.DiGraph()
     temporal_graph.add_nodes_from(temporal_node_list(G, limit, node_constraints))
@@ -209,7 +208,6 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, r
     raise nx.NetworkXNoPath(f"Node {target} not reachable from {source}")
 
 
-
 def sum_of_cost(paths, graph=None):
     if paths is None or None in paths or [] in paths:
         return np.inf
@@ -270,8 +268,6 @@ class CBSNode:
     def __ge__(self, other):
         return self.tuple_repr() >= other.tuple_repr()
 
-    
-    
     def shorthand(self):
         result = f"[constraints::"
         d = {}
@@ -310,8 +306,7 @@ class CBSNode:
                 graph.add_edge(x._index, y._index)
         return graph
 
-    
-    
+
 class CBS:
     def __init__(self, g, start_goal, agent_constraints=None, limit=10, max_iter=10000):
         self.start_goal = start_goal
@@ -424,7 +419,6 @@ class CBS:
         node.final = True
         return node
 
-                
     def update_best(self, node):
         if self.best is None or node.fitness < self.best.fitness:
             print(f'Found new best solution at iteration {self.iteration_counter}.')
