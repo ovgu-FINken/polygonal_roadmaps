@@ -2,10 +2,8 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
-import networkx as nx
-import numpy as np
 from pathlib import Path
-from polygonal_roadmaps import pathfinding
+
 from polygonal_roadmaps import geometry
 
 
@@ -23,9 +21,10 @@ class TestGraphCreation(unittest.TestCase):
         self.assertFalse(free.buffer(-0.1).intersects(obstacles))
 
     def testGenGraph(self):
-        free, obstacles = geometry.read_obstacles(self.map_path)
+        _, obstacles = geometry.read_obstacles(self.map_path)
         wx = (-1, 3)
         wy = (-1, 3)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        graph = geometry.create_graph(generators,working_area_x=wx, working_area_y=wy)
-        self.assertTrue(True)
+        graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles)
+        self.assertGreater(graph.number_of_nodes(), 10)
+        self.assertGreater(graph.number_of_edges(), 10)

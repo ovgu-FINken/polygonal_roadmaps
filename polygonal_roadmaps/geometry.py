@@ -12,6 +12,7 @@ import networkx as nx
 
 from polygonal_roadmaps import pathfinding
 
+
 @dataclass
 class NavNode:
     """class for keeping node data"""
@@ -32,21 +33,21 @@ class NavEdge:
 def create_graph(generator_points: np.array,
                  working_area_x=(0.0, 1.0),
                  working_area_y=(0.0, 1.0),
-                 offset: float=0.02,
+                 offset: float = 0.02,
                  occupied_space=None):
-    limits = Polygon([
-        (working_area_x[0], working_area_y[0]),
-        (working_area_x[1], working_area_y[0]),
-        (working_area_x[1], working_area_y[1]),
-        (working_area_x[0], working_area_y[1])
-    ])
+    limits = polygon_from_limits(working_area_x, working_area_y)
     if occupied_space is not None:
         limits = limits.difference(occupied_space)
-    
+
+    nodes = add_nodes_to_graph(generator_points, limits, offset)
+    edges = add_edges_to_graph(nodes, offset)
+    return gen_graph_nx(nodes, edges)
+
+
+def add_nodes_to_graph(generator_points, limits, offset):
     # we add the outer points in order to get closed cells (not ending in infinity)
     padded_generators = np.vstack([generator_points, np.array([[0, 100], [0, -100], [-100, 0], [100, 0]])])
     vor = Voronoi(padded_generators)
-
     lines = [shapely.geometry.LineString(vor.vertices[line]) for line in vor.ridge_vertices if -1 not in line]
     polys = [p for p in shapely.ops.polygonize(lines)]
     nodes = []
@@ -63,7 +64,10 @@ def create_graph(generator_points: np.array,
         inner = outer.buffer(-offset)
         inner = select_largest_poly(inner)
         nodes.append(NavNode(center=Point(x, y), outer=outer, inner=inner, name=f'N{i}'))
+    return nodes
 
+
+def add_edges_to_graph(nodes, offset):
     edges = []
     for i, n1 in enumerate(nodes):
         for j, n2 in enumerate(nodes):
@@ -77,59 +81,63 @@ def create_graph(generator_points: np.array,
                 if n1.inner is None or n2.inner is None or n1.inner.is_empty or n2.inner.is_empty \
                         or not n1.inner.is_valid or not n2.inner.is_valid:
                     edges.append(
-                                    (n1, n2, NavEdge(
-                                        borderLine=e[0],
-                                        connection=LineString([n1.center, n2.center]),
-                                        borderPoly=None),
-                                        i,
-                                        j
-                                    )
-                                )
+                        (n1, n2, NavEdge(
+                            borderLine=e[0],
+                            connection=LineString([n1.center, n2.center]),
+                            borderPoly=None),
+                         i,
+                         j
+                         )
+                    )
                     continue
-                try:
-                    bp = n1.outer.union(n2.outer).buffer(-offset).difference(n1.inner).difference(n2.inner)
-                    if bp.is_valid:
-                        if bp.geometryType() == 'MultiPolygon':
-                            x = None
-                            for p in bp:
-                                if p.touches(n1.inner) and p.touches(n2.inner):
-                                    x = p
-                            bp = x
-                    
-                    edges.append(
-                        (
-                            n1, n2, NavEdge(
+
+                bp = n1.outer.union(n2.outer).buffer(-offset).difference(n1.inner).difference(n2.inner)
+                if bp.is_valid:
+                    if bp.geometryType() == 'MultiPolygon':
+                        x = None
+                        for p in bp:
+                            if p.touches(n1.inner) and p.touches(n2.inner):
+                                x = p
+                        bp = x
+                edges.append(
+                    (
+                        n1, n2, NavEdge(
                             borderLine=e[0],
                             connection=LineString([n1.center, n2.center]),
                             borderPoly=bp),
-                            i, j
-                        )
+                        i, j
                     )
-                except NotImplementedError:
-                    drawGraph([n1, n2], [], show=False)
-                    for l in e[0]:
-                        plt.plot(*l.xy)
-                    plt.show()
-                    
-    return gen_graph_nx(nodes, edges)
-    
-
-def square_tiling(dist, working_area_x=(0.0,1.0), working_area_y=(0.0,1.0)):
-    XX, YY = np.meshgrid(np.arange(working_area_x[0]+dist/2, working_area_x[1], dist), np.arange(working_area_y[0]+dist/2, working_area_y[1], dist), indexing='xy')
-    return np.dstack([ XX, YY]).reshape(-1, 2)
+                )
+    return edges
 
 
-def hexagon_tiling(dist, working_area_x=(0.0,1.0), working_area_y=(0.0,1.0)):
+def polygon_from_limits(working_area_x, working_area_y):
+    return Polygon([
+        (working_area_x[0], working_area_y[0]),
+        (working_area_x[1], working_area_y[0]),
+        (working_area_x[1], working_area_y[1]),
+        (working_area_x[0], working_area_y[1])
+    ])
+
+
+def square_tiling(dist, working_area_x=(0.0, 1.0), working_area_y=(0.0, 1.0)):
+    XX, YY = np.meshgrid(np.arange(working_area_x[0] + dist / 2, working_area_x[1], dist),
+                         np.arange(working_area_y[0] + dist / 2, working_area_y[1], dist), indexing='xy')
+    return np.dstack([XX, YY]).reshape(-1, 2)
+
+
+def hexagon_tiling(dist, working_area_x=(0.0, 1.0), working_area_y=(0.0, 1.0)):
     dy = dist * np.sqrt(0.75)
-    XX, YY = np.meshgrid(np.arange(working_area_x[0]+dist*0.1, working_area_x[1]-dist/2, dist), np.arange(working_area_y[0]+dist/2, working_area_y[1], dy), indexing='xy')
+    XX, YY = np.meshgrid(np.arange(working_area_x[0] + dist * 0.1, working_area_x[1] - dist / 2, dist),
+                         np.arange(working_area_y[0] + dist / 2, working_area_y[1], dy), indexing='xy')
     XX[::2] += dist * 0.5
-    return np.dstack([ XX, YY]).reshape(-1, 2)
+    return np.dstack([XX, YY]).reshape(-1, 2)
 
 
-def random_tiling(n, working_area_x=(0.0,1.0), working_area_y=(0.0, 1.0)):
+def random_tiling(n, working_area_x=(0.0, 1.0), working_area_y=(0.0, 1.0)):
     t = np.random.random((n, 2))
-    t[:,0] = t[:,0] * (working_area_x[1] - working_area_x[0]) + working_area_x[0]
-    t[:,1] = t[:,1] * (working_area_y[1] - working_area_y[0]) + working_area_y[0]
+    t[:, 0] = t[:, 0] * (working_area_x[1] - working_area_x[0]) + working_area_x[0]
+    t[:, 1] = t[:, 1] * (working_area_y[1] - working_area_y[0]) + working_area_y[0]
     return t
 
 
@@ -149,6 +157,7 @@ def poly_from_path(g, path, eps=0.05):
     poly = shapely.ops.unary_union(poly).buffer(-eps).simplify(eps)
     return select_largest_poly(poly)
 
+
 def path_from_positions(g, start, goal):
     g.set_edge_filter(None)
     g.set_vertex_filter(None)
@@ -158,10 +167,12 @@ def path_from_positions(g, start, goal):
     gn = find_nearest_node(g, goal)
     return pathfinding.spatial_astar(g, sn, gn)
 
-def convert_coordinates(poly, resolution:float, oX:float, oY:float):
-    poly = poly * resolution + np.array([oX+0.025, oY+1.45])
-    poly[:,1] *= -1
+
+def convert_coordinates(poly, resolution: float, oX: float, oY: float):
+    poly = poly * resolution + np.array([oX + 0.025, oY + 1.45])
+    poly[:, 1] *= -1
     return Polygon(poly)
+
 
 def read_obstacles(file_name):
     img, info = read_map(file_name)
@@ -196,10 +207,11 @@ def read_obstacles(file_name):
 
     return shapely.ops.unary_union(free), shapely.ops.unary_union(obstacles)
 
+
 def gen_graph_nx(nodes, edges):
     g = nx.Graph()
     for i, n in enumerate(nodes):
-        g.add_node(i, pos=(n.center.x,n.center.y), traversable=n.inner is not None, geometry=n)
+        g.add_node(i, pos=(n.center.x, n.center.y), traversable=n.inner is not None, geometry=n)
     for le in edges:
         dist = le[0].center.distance(le[1].center)
         border_poly = le[2].borderPoly
@@ -212,13 +224,12 @@ def gen_graph_nx(nodes, edges):
     return g
 
 
-
 def drawGraph(g, inner=True, outer=True, center=True, connections=True, borderPolys=True, show=True, edge_weight=None, node_weight=None):
     wax = g.gp['wa']['working_area_x']
     way = g.gp['wa']['working_area_y']
     width = 6
     height = width * (way[1] - way[0]) / (wax[1] - wax[0])
-    
+
     plt.figure(figsize=(width, height))
     for v in g.iter_vertices():
         n = g.vp['geometry'][v]
@@ -232,7 +243,7 @@ def drawGraph(g, inner=True, outer=True, center=True, connections=True, borderPo
                 s *= 2.0 * g.vp[node_weight][v] / g.vp[node_weight].a.max()
 
             plt.plot(*n.center.xy, 'o', markersize=s, color='black')
-    
+
     for ge in g.edges():
         e = g.ep['geometry'][ge]
         if connections:
@@ -250,16 +261,14 @@ def drawGraph(g, inner=True, outer=True, center=True, connections=True, borderPo
         plt.show()
 
 
-
 def find_nearest_node(g, p):
     dist = [np.linalg.norm(np.array(p) - np.array(g.vp['center'][n])) for n in g.iter_vertices()]
     return np.argmin(dist)
 
 
-
 def waypoints_through_poly(g, poly, start, goal, eps=0.01):
     """ compute a waypoints of a linear line segement path through a polygon
-    
+
     """
     # coords will hold final waypoints
     coords = [start]
@@ -267,7 +276,7 @@ def waypoints_through_poly(g, poly, start, goal, eps=0.01):
     start = point_on_border(g, poly, start)
     if start is not None:
         coords.append(start)
-    
+
     ep = point_on_border(g, poly, goal)
     # if endpoint is outside poly, use endpoint on border and append goal
     if ep is not None:
@@ -292,42 +301,41 @@ def shorten_path(g, poly, coords):
 
 
 def shorten_recursive(g, poly, coords, eps=0.01):
-    if len(coords) < 3: 
+    if len(coords) < 3:
         return coords
     # if next segment can be dropped drop the segment
     if LineString([coords[0], coords[2]]).within(poly):
         coords = [coords[0]] + coords[2:]
         return shorten_recursive(g, poly, coords, eps=eps)
-    
+
     if len(coords) < 4:
         return [coords[0]] + shorten_recursive(g, poly, coords[1:], eps=eps)
-    
+
     straight_segment = compute_straight_path(g, poly, coords[1], coords[-1], eps=eps)
-    #straight_segment = coords[1:]
+    # straight_segment = coords[1:]
     return [coords[0]] + shorten_recursive(g, poly, straight_segment, eps=eps)
 
 
 def shorten_direction(g, poly, coords):
     # stop recursion: cannot reduce 2 point line
-    if len(coords) < 3: 
+    if len(coords) < 3:
         return coords
-    for i in range(1, len(coords)-1):
+    for i in range(1, len(coords) - 1):
         if LineString([coords[i - 1], coords[i + 1]]).within(poly):
             jm = i + 1
-            for j in range(i+2, len(coords)):
+            for j in range(i + 2, len(coords)):
                 if LineString([coords[i - 1], coords[j]]).within(poly):
                     jm = j
                 else:
                     break
             ret = coords[:i]
-            #ret += shorten_direction(g, poly, compute_straight_path(g, poly, coords[jm], coords[-1]))
             ret += shorten_direction(g, poly, coords[jm:])
             return ret
     # no reduction possible:
     return coords
 
 
-def point_on_border(g, poly:Polygon, point:Point)->Point:
+def point_on_border(g, poly: Polygon, point: Point) -> Point:
     """
     compute a linestring to the edge of the polygon
     if the point is in the polygone:
@@ -356,7 +364,7 @@ def point_on_border(g, poly:Polygon, point:Point)->Point:
             return poe[0]
         else:
             raise NotImplementedError(f"GeometryType {poe.geometryType()} not handled.")
-        
+
     return poe
 
 
@@ -376,7 +384,7 @@ def compute_straight_path(g, poly, start, goal, eps=None):
     elif inner_line.geometryType() == 'MultiLineString':
         pass
     else:
-        #print(inner_line.wkt)
+        # print(inner_line.wkt)
         pass
     result = [i for i in inner_line if i.geometryType() == 'LineString']
     outer_line = line - poly
@@ -387,13 +395,13 @@ def compute_straight_path(g, poly, start, goal, eps=None):
             outer_line = MultiLineString([outer_line])
     for ls in outer_line:
         i0 = poly.exterior.project(Point(ls.coords[0]))
-        i1 = poly.exterior.project(Point(ls.coords[-1])) 
+        i1 = poly.exterior.project(Point(ls.coords[-1]))
         outer_segment = shapely.ops.substring(poly.exterior, i0, i1)
         if outer_segment.geometryType() == 'LineString':
             outer_segment = MultiLineString([outer_segment])
         elif outer_segment.geometryType() == 'Point':
             continue
-        result+= [i for i in outer_segment if i.geometryType() == 'LineString']
+        result += [i for i in outer_segment if i.geometryType() == 'LineString']
 
     try:
         line = shapely.ops.linemerge(MultiLineString(result))
@@ -413,7 +421,6 @@ def compute_straight_path(g, poly, start, goal, eps=None):
                     break
         line = shapely.ops.linemerge(line)
 
-            
     if isinstance(line, shapely.geometry.base.BaseMultipartGeometry):
         print("failed to merge multiline-string")
         print(line.wkt)
