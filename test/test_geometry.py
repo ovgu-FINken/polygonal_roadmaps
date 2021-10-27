@@ -1,12 +1,10 @@
-import os, sys
+import os
+import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import unittest
 import networkx as nx
 import numpy as np
 from pathlib import Path
-
-
 from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
 

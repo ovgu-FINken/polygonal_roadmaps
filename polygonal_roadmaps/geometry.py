@@ -5,7 +5,6 @@ from shapely.geometry import Polygon, Point, MultiLineString, LineString
 import shapely.ops
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-# from graph_tool.all import * #noqa
 from skimage import io, measure
 import yaml
 import os
@@ -157,7 +156,7 @@ def path_from_positions(g, start, goal):
     g.set_edge_filter(g.ep['traversable'])
     sn = find_nearest_node(g, start)
     gn = find_nearest_node(g, goal)
-    return find_path_astar(g, sn, gn)
+    return pathfinding.spatial_astar(g, sn, gn)
 
 def convert_coordinates(poly, resolution:float, oX:float, oY:float):
     poly = poly * resolution + np.array([oX+0.025, oY+1.45])
@@ -212,33 +211,6 @@ def gen_graph_nx(nodes, edges):
         g.add_edge(le[-2], le[-1], geometry=le[2], dist=dist, traversable=traversable)
     return g
 
-def gen_graph(nodes, edges):
-    g = Graph(directed=False)
-    g.vertex_properties['center'] = g.new_vertex_property('vector<double>')
-    g.vertex_properties['traversable'] = g.new_vertex_property('bool')
-    g.vertex_properties['geometry'] = g.new_vertex_property('object')
-    for n in nodes:
-        v = g.add_vertex() 
-        g.vp['center'][v] = n.center.x, n.center.y
-        g.vp['traversable'][v] = n.inner is not None
-        g.vp['geometry'][v] = n
-    
-    g.ep['dist'] = g.new_edge_property('double')
-    g.ep['traversable'] = g.new_edge_property('bool')
-    g.ep['geometry'] = g.new_edge_property('object')
-    for le in edges:
-        e = g.add_edge(le[-2], le[-1])
-        g.ep['dist'][e] = le[0].center.distance(le[1].center)
-        borderPoly = le[2].borderPoly
-        if borderPoly is None or not borderPoly.is_valid or borderPoly.is_empty:
-            g.ep['traversable'][e] = False
-        else:
-            bigger_poly = borderPoly.buffer(1e-8)
-            g.ep['traversable'][e] = bigger_poly.intersects(le[0].inner) and bigger_poly.intersects(le[1].inner)
-
-        g.ep['geometry'][e] = le[2]
-
-    return g
 
 
 def drawGraph(g, inner=True, outer=True, center=True, connections=True, borderPolys=True, show=True, edge_weight=None, node_weight=None):
