@@ -113,19 +113,16 @@ def temporal_node_list(G, limit, node_constraints):
         nodelist += [ (f'n{n}t{t}', {'n': n, 't':  t}) for n in nodes if (n, t) not in node_constraints]
     return nodelist
 
-def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, return_graph=False):
+def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
     # we search the path one time with normal A*, so we know that all nodes exist and are connected
-    if node_constraints is None:
+    if not node_constraints:
         spatial_path = spatial_astar(G, source, target)
         if len(spatial_path) > limit:
             raise nx.NetworkXNoPath()
         return spatial_astar(G, source, target)
 
-    temporal_graph = nx.DiGraph()
-    temporal_graph.add_nodes_from(temporal_node_list(G, limit, node_constraints))
-    
-    def heuristic(u, _):
-        return cost[temporal_graph.nodes()[u]['n']]
+    def heuristic(u):
+        return cost[u]
 
     push = heappush
     pop = heappop
@@ -137,7 +134,9 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, r
     # attempting to compare the nodes themselves. The hash breaks ties in the
     # priority and is guaranteed unique for all nodes in the graph.
     c = count()
-    queue = [(0, next(c), f"n{source}t0", 0, None)]
+    nodes = {f'n{source}t0': {'n': source, 't': 0, 'cost':0, 'parent': None}}
+    queue = [(0, next(c),f'n{source}t0', 0, None)]
+    
 
     # Maps enqueued nodes to distance of discovered paths and the
     # computed heuristics to target. We avoid computing the heuristics
@@ -149,18 +148,14 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, r
     while queue:
         # Pop the smallest item from queue.
         _, __, curnode, dist, parent = pop(queue)
-        if return_graph:
-            temporal_graph.nodes()[curnode]['cost'] = dist
-        if temporal_graph.nodes()[curnode]['n'] == target:
+        if nodes[curnode]['n'] == target:
             path = [curnode]
             node = parent
             while node is not None:
                 path.append(node)
                 node = explored[node]
             path.reverse()
-            if return_graph:
-                return [temporal_graph.nodes()[n]['n'] for n in path], temporal_graph
-            return [temporal_graph.nodes()[n]['n'] for n in path]
+            return [nodes[n]['n'] for n in path]
 
         if curnode in explored:
             # Do not override the parent of starting node
@@ -175,25 +170,17 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, r
         explored[curnode] = parent
 
         # expand neighbours and add edges
-        t = temporal_graph.nodes()[curnode]['t']
-        node = temporal_graph.nodes()[curnode]['n']
-        def add_edge_if_exists(n, t):
-            next_id = f"n{n}t{t}"
-            if next_id in temporal_graph.nodes():
-                temporal_graph.add_edge(curnode, next_id)
-        for n, w in G[node].items():
-            add_edge_if_exists(n, t+1)
-        add_edge_if_exists(node, t+1)
+        t = nodes[curnode]['t'] + 1
+        node = nodes[curnode]['n']
         
-        # search in expanded neigbour list
-        for neighbor, w in temporal_graph[curnode].items():
-            neighbor_node = temporal_graph.nodes[neighbor]['n']
-            if neighbor_node == node:
-                ncost = dist + 1
-            else:
-                ncost = dist + weight(node, neighbor_node, w)
-            if neighbor in enqueued:
-                qcost, h = enqueued[neighbor]
+        for neighbor, w in G[node].items():
+            if (neighbor, t) in node_constraints:
+                continue
+            
+            ncost = dist + weight(node, neighbor, w)
+            t_neighbor = f'n{neighbor}t{t}'
+            if t_neighbor in enqueued:
+                qcost, h = enqueued[t_neighbor]
                 # if qcost <= ncost, a less costly path from the
                 # neighbor to the source was already determined.
                 # Therefore, we won't attempt to push this neighbor
@@ -201,9 +188,29 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None, r
                 if qcost <= ncost:
                     continue
             else:
-                h = heuristic(neighbor, target)
-            enqueued[neighbor] = ncost, h
-            push(queue, (ncost + h, next(c), neighbor, ncost, curnode))
+                h = heuristic(neighbor)
+            nodes[t_neighbor] = {'n': neighbor, 't': t}
+            enqueued[t_neighbor] = ncost, h
+            push(queue, (ncost + h, next(c), t_neighbor, ncost, curnode))
+            
+        if (node, t) not in node_constraints:
+            neighbor = node
+            
+            ncost = dist + 1
+            t_neighbor = f'n{neighbor}t{t}'
+            if t_neighbor in enqueued:
+                qcost, h = enqueued[t_neighbor]
+                # if qcost <= ncost, a less costly path from the
+                # neighbor to the source was already determined.
+                # Therefore, we won't attempt to push this neighbor
+                # to the queue
+                if qcost <= ncost:
+                    continue
+            else:
+                h = heuristic(neighbor)
+            nodes[t_neighbor] = {'n': neighbor, 't': t}
+            enqueued[t_neighbor] = ncost, h
+            push(queue, (ncost + h, next(c), t_neighbor, ncost, curnode))
 
     raise nx.NetworkXNoPath(f"Node {target} not reachable from {source}")
 

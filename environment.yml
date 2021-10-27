@@ -5,7 +5,6 @@ channels:
 dependencies:
   - anyio=3.3.3
   - appdirs=1.4.4
-  - appnope=0.1.2
   - argon2-cffi=21.1.0
   - async_generator=1.10
   - atk-1.0=2.36.0
@@ -114,7 +113,6 @@ dependencies:
   - libedit=3.1.20191231
   - libev=4.33
   - libffi=3.4.2
-  - libgfortran=5.0.0
   - libgfortran5=9.3.0
   - libgirepository=1.70.0
   - libglib=2.68.4

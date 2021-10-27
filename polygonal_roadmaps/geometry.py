@@ -5,13 +5,13 @@ from shapely.geometry import Polygon, Point, MultiLineString, LineString
 import shapely.ops
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-from graph_tool.all import * #noqa
+# from graph_tool.all import * #noqa
 from skimage import io, measure
-from deprecation import deprecated
 import yaml
 import os
+import networkx as nx
 
-from polygonal_roadmaps.pathfinding import find_path_astar
+from polygonal_roadmaps import pathfinding
 
 @dataclass
 class NavNode:
@@ -112,7 +112,7 @@ def create_graph(generator_points: np.array,
                         plt.plot(*l.xy)
                     plt.show()
                     
-    return gen_graph(nodes, edges)
+    return gen_graph_nx(nodes, edges)
     
 
 def square_tiling(dist, working_area_x=(0.0,1.0), working_area_y=(0.0,1.0)):
@@ -144,18 +144,11 @@ def read_map(info_file):
     return img, info
 
 
-
-@deprecated(details="use path_from_positions(g, start, goal) and poly_from_path(g, path, eps=...) instead")
-def path_poly(g, start, goal, eps=0.1):
-    l = path_from_positions(g, start, goal)
-    return l, poly_from_path(g, l, eps=eps)
-
 def poly_from_path(g, path, eps=0.05):
     poly = [g.vp['geometry'][p].inner.buffer(eps) for p in path]
     poly += [g.ep['geometry'][g.edge(*e)].borderPoly.buffer(eps) for e in zip(path[:-1], path[1:])]
     poly = shapely.ops.unary_union(poly).buffer(-eps).simplify(eps)
     return select_largest_poly(poly)
-        
 
 def path_from_positions(g, start, goal):
     g.set_edge_filter(None)
@@ -204,6 +197,20 @@ def read_obstacles(file_name):
 
     return shapely.ops.unary_union(free), shapely.ops.unary_union(obstacles)
 
+def gen_graph_nx(nodes, edges):
+    g = nx.Graph()
+    for i, n in enumerate(nodes):
+        g.add_node(i, pos=(n.center.x,n.center.y), traversable=n.inner is not None, geometry=n)
+    for le in edges:
+        dist = le[0].center.distance(le[1].center)
+        border_poly = le[2].borderPoly
+        if border_poly is None or not border_poly.is_valid or border_poly.is_empty:
+            traversable = False
+        else:
+            bigger_poly = border_poly.buffer(1e-8)
+            traversable = bigger_poly.intersects(le[0].inner) and bigger_poly.intersects(le[1].inner)
+        g.add_edge(le[-2], le[-1], geometry=le[2], dist=dist, traversable=traversable)
+    return g
 
 def gen_graph(nodes, edges):
     g = Graph(directed=False)

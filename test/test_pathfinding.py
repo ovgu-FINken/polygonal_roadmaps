@@ -75,7 +75,7 @@ class TestLowLevelSearch(unittest.TestCase):
         self.assertEqual(path, expected)
         
         path = pathfinding.spacetime_astar(self.graph, 'a', 'e', cost, node_constraints=[('c', 2)])
-        expected = [ list('aabcde'), list('abfgde')]
+        expected = [ list('aabcde'), list('abbcde'), list('abfgde')]
         self.assertIn(path, expected)
         
         cost = pathfinding.compute_cost(self.graph, 'b')
@@ -151,7 +151,7 @@ class TestCBS(unittest.TestCase):
         cbs = pathfinding.CBS(self.graph, [('a','e'), ('e','a')], limit=15)
         cbs.setup()
         # the first step should expand the root node of the constraint tree
-        self.assertFalse(cbs.root.open)
+        self.assertTrue(cbs.root.open)
         self.assertLess(cbs.root.fitness, 2 * 100) # fitness should be less than agents * limit
         # our example has conflicts, so the root node should not be the final node
         self.assertEqual(cbs.root.solution, [(list("abcde")), list("edcba")])
