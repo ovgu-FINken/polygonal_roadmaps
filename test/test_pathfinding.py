@@ -95,7 +95,8 @@ class TestCBS(unittest.TestCase):
         path2 = [2, 3]
         conflicts = pathfinding.compute_node_conflicts([path1, path2], limit=10)
         self.assertEqual(conflicts, frozenset(
-            [frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=3), pathfinding.NodeConstraint(agent=1, time=1, node=3)])]))
+            [frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=3),
+             pathfinding.NodeConstraint(agent=1, time=1, node=3)])]))
 
         conflicts = pathfinding.compute_node_conflicts([[0, 1, 4, 5], [2, 3]], limit=10)
         self.assertEqual(conflicts, frozenset([]))

@@ -63,7 +63,8 @@ def add_nodes_to_graph(generator_points, limits, offset):
         outer = select_largest_poly(outer)
         inner = outer.buffer(-offset)
         inner = select_largest_poly(inner)
-        nodes.append(NavNode(center=Point(x, y), outer=outer, inner=inner, name=f'N{i}'))
+        if not inner.is_empty:
+            nodes.append(NavNode(center=Point(x, y), outer=outer, inner=inner, name=f'N{i}'))
     return nodes
 
 
@@ -80,15 +81,6 @@ def add_edges_to_graph(nodes, offset):
             if len(e) > 0:
                 if n1.inner is None or n2.inner is None or n1.inner.is_empty or n2.inner.is_empty \
                         or not n1.inner.is_valid or not n2.inner.is_valid:
-                    edges.append(
-                        (n1, n2, NavEdge(
-                            borderLine=e[0],
-                            connection=LineString([n1.center, n2.center]),
-                            borderPoly=None),
-                         i,
-                         j
-                         )
-                    )
                     continue
 
                 bp = n1.outer.union(n2.outer).buffer(-offset).difference(n1.inner).difference(n2.inner)
@@ -99,15 +91,16 @@ def add_edges_to_graph(nodes, offset):
                             if p.touches(n1.inner) and p.touches(n2.inner):
                                 x = p
                         bp = x
-                edges.append(
-                    (
-                        n1, n2, NavEdge(
-                            borderLine=e[0],
-                            connection=LineString([n1.center, n2.center]),
-                            borderPoly=bp),
-                        i, j
+                if bp.touches(n1.inner) and bp.touches(n2.inner):
+                    edges.append(
+                        (
+                            n1, n2, NavEdge(
+                                borderLine=e[0],
+                                connection=LineString([n1.center, n2.center]),
+                                borderPoly=bp),
+                            i, j
+                        )
                     )
-                )
     return edges
 
 
@@ -224,26 +217,29 @@ def gen_graph_nx(nodes, edges):
     return g
 
 
-def drawGraph(g, inner=True, outer=True, center=True, connections=True, borderPolys=True, show=True, edge_weight=None, node_weight=None):
+def drawGraph(g,
+              inner=True,
+              outer=True,
+              center=True,
+              connections=True,
+              borderPolys=True,
+              show=True,
+              edge_weight=None,
+              node_weight=None):
     wax = g.gp['wa']['working_area_x']
     way = g.gp['wa']['working_area_y']
     width = 6
     height = width * (way[1] - way[0]) / (wax[1] - wax[0])
 
     plt.figure(figsize=(width, height))
-    for v in g.iter_vertices():
-        n = g.vp['geometry'][v]
-        if n.inner and n.inner is not None:
-            plt.plot(*n.inner.exterior.xy, ':', color='black')
-        if outer:
-            plt.plot(*n.outer.exterior.xy, '--', color='black')
-        if center:
-            s = 5
-            if node_weight is not None:
-                s *= 2.0 * g.vp[node_weight][v] / g.vp[node_weight].a.max()
+    plot_vertices(g, outer, center, node_weight)
 
-            plt.plot(*n.center.xy, 'o', markersize=s, color='black')
+    plot_edges(g, connections, borderPolys, edge_weight)
+    if show:
+        plt.show()
 
+
+def plot_edges(g, connections, borderPolys, edge_weight):
     for ge in g.edges():
         e = g.ep['geometry'][ge]
         if connections:
@@ -257,8 +253,21 @@ def drawGraph(g, inner=True, outer=True, center=True, connections=True, borderPo
                     plt.plot(*p.exterior.xy)
             else:
                 plt.fill(*e.borderPoly.exterior.xy, alpha=0.1)
-    if show:
-        plt.show()
+
+
+def plot_vertices(g, outer, center, node_weight):
+    for v in g.iter_vertices():
+        n = g.vp['geometry'][v]
+        if n.inner and n.inner is not None:
+            plt.plot(*n.inner.exterior.xy, ':', color='black')
+        if outer:
+            plt.plot(*n.outer.exterior.xy, '--', color='black')
+        if center:
+            s = 5
+            if node_weight is not None:
+                s *= 2.0 * g.vp[node_weight][v] / g.vp[node_weight].a.max()
+
+            plt.plot(*n.center.xy, 'o', markersize=s, color='black')
 
 
 def find_nearest_node(g, p):
@@ -343,29 +352,13 @@ def point_on_border(g, poly: Polygon, point: Point) -> Point:
     if the point is outside:
         return point on edge
     """
-    poe = None
     point = Point(point)
     if point.within(poly):
         return None
-    else:
-        sn = find_nearest_node(g, point)
-        inner = g.vp['geometry'][sn].inner
-        d = inner.exterior.project(point)
-        return inner.exterior.interpolate(d)
-        LS = LineString([point, g.vp['center'][sn]])
-        poe = LS.intersection(poly.exterior)
-        if poe.geometryType() == 'Point':
-            return poe
-        elif poe.geometryType() == 'LineString' and poe.is_valid:
-            assert(not poe.is_empty)
-            assert(poe.length < 0.01)
-            return poe.representative_point()
-        elif poe.geometryType() == 'MultiPoint':
-            return poe[0]
-        else:
-            raise NotImplementedError(f"GeometryType {poe.geometryType()} not handled.")
-
-    return poe
+    sn = find_nearest_node(g, point)
+    inner = g.vp['geometry'][sn].inner
+    d = inner.exterior.project(point)
+    return inner.exterior.interpolate(d)
 
 
 def compute_straight_path(g, poly, start, goal, eps=None):

@@ -41,20 +41,20 @@ def pred_to_list(g, pred, start, goal):
         print("goal was NONE, this means no path was found")
         return [start]
     p = goal
-    l = [p]
+    path = [p]
     g.vp['visited'] = g.new_vertex_property("bool")
     while p != start:
         if p is None:
-            print(l)
-            return l
+            print(path)
+            return path
         if pred[p] == p:
             break
         p = pred[p]
-        l.append(p)
-    l.reverse()
-    if l[0] != start or l[-1] != goal:
+        path.append(p)
+    path.reverse()
+    if path[0] != start or path[-1] != goal:
         raise nx.NetworkXNoPath('no path could be found')
-    return l
+    return path
 
 
 def pad_path(path: list, limit=10) -> list:
@@ -154,13 +154,7 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
         # Pop the smallest item from queue.
         _, __, curnode, dist, parent = pop(queue)
         if nodes[curnode]['n'] == target:
-            path = [curnode]
-            node = parent
-            while node is not None:
-                path.append(node)
-                node = explored[node]
-            path.reverse()
-            return [nodes[n]['n'] for n in path]
+            return spacetime_astar_calculate_return_path(nodes, explored, curnode, parent)
 
         if curnode in explored:
             # Do not override the parent of starting node
@@ -216,8 +210,17 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
             nodes[t_neighbor] = {'n': neighbor, 't': t}
             enqueued[t_neighbor] = ncost, h
             push(queue, (ncost + h, next(c), t_neighbor, ncost, curnode))
-
     raise nx.NetworkXNoPath(f"Node {target} not reachable from {source}")
+
+
+def spacetime_astar_calculate_return_path(nodes, explored, curnode, parent):
+    path = [curnode]
+    node = parent
+    while node is not None:
+        path.append(node)
+        node = explored[node]
+    path.reverse()
+    return [nodes[n]['n'] for n in path]
 
 
 def sum_of_cost(paths, graph=None):
@@ -397,7 +400,6 @@ class CBS:
             return node
 
         node.conflicts = set()
-        # node.conflicts = frozenset(set( conflict for conflict in compute_node_conflicts(node.solution)) | set(conflict for conflict in compute_edge_conflic
         for conflict in compute_node_conflicts(node.solution):
             node.conflicts |= conflict
 
