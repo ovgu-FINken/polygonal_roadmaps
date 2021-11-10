@@ -1,7 +1,10 @@
 import os
 import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
+import networkx as nx
+import numpy as np
 from pathlib import Path
 
 from polygonal_roadmaps import geometry
@@ -22,19 +25,31 @@ class TestGraphCreation(unittest.TestCase):
 
     def testGenGraph(self):
         _, obstacles = geometry.read_obstacles(self.map_path)
-        wx = (-1, 3)
-        wy = (-1, 3)
+        wx = (-1, 3.5)
+        wy = (-3, 1.5)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles)
+        graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles, offset=0.15)
         self.assertGreater(graph.number_of_nodes(), 10)
         self.assertGreater(graph.number_of_edges(), 10)
+        self.assertEqual(nx.number_connected_components(graph), 4)
 
 
 class TestPathPolygon(unittest.TestCase):
     def setUp(self):
-        _, obstacles = geometry.read_obstacles(self.map_path)
-        wx = (-1, 3)
-        wy = (-1, 3)
+        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "icra2021_map.yaml"
+        _, obstacles = geometry.read_obstacles(map_path)
+        wx = (-1, 3.5)
+        wy = (-3, 1.5)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles)
-        
+        self.graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles, offset=0.15)
+
+    def testFindNearestNode(self):
+        p1 = np.array(self.graph.nodes()[30]['geometry'].center.xy)[:, 0]
+        n1 = geometry.find_nearest_node(self.graph, p1)
+        self.assertEquals(n1, 30)
+
+        # see if we find the point despite a slight perturbation
+        p2 = np.array(self.graph.nodes()[70]['geometry'].center.xy)[:, 0]
+        p2 += np.array([0.1, -0.1])
+        n2 = geometry.find_nearest_node(self.graph, p2)
+        self.assertEquals(n2, 70)

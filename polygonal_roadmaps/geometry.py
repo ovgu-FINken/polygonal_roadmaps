@@ -271,7 +271,7 @@ def plot_vertices(g, outer, center, node_weight):
 
 
 def find_nearest_node(g, p):
-    dist = [np.linalg.norm(np.array(p) - np.array(g.vp['center'][n])) for n in g.iter_vertices()]
+    dist = [np.linalg.norm(np.array(p) - np.array(g.nodes()[n]['geometry'].center.xy)[:, 0]) for n in g.nodes()]
     return np.argmin(dist)
 
 
