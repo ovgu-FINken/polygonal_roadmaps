@@ -21,6 +21,9 @@ class NavNode:
     inner: Polygon
     name: str
 
+    def get_center_np(self) -> np.array:
+        return np.array(self.center.xy)[:, 0]
+
 
 @dataclass
 class NavEdge:
@@ -271,7 +274,7 @@ def plot_vertices(g, outer, center, node_weight):
 
 
 def find_nearest_node(g, p):
-    dist = [np.linalg.norm(np.array(p) - np.array(g.nodes()[n]['geometry'].center.xy)[:, 0]) for n in g.nodes()]
+    dist = [np.linalg.norm(np.array(p) - g.nodes()[n]['geometry'].get_center_np()) for n in g.nodes()]
     return np.argmin(dist)
 
 
