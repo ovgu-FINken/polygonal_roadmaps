@@ -81,6 +81,25 @@ class TestLowLevelSearch(unittest.TestCase):
         self.assertEqual(path, expected)
 
 
+class TestPrioritizedSearch(unittest.TestCase):
+    def setUp(self):
+        self.graph = pathfinding.gen_example_graph(5, 2)
+
+    def testNoConflict(self):
+        try:
+            solution = pathfinding.prioritized_plans(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
+        except nx.NetworkXNoPath:
+            self.assertTrue(False, msg="exception should not be raised, as path is valid")
+        self.assertEqual(solution, [list('bcde'), list('gfba')])
+
+    def testConflict(self):
+        try:
+            solution = pathfinding.prioritized_plans(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
+        except nx.NetworkXNoPath:
+            self.assertTrue(False, msg="exception should not be raised, as path is valid")
+        self.assertEqual(solution, [list('abcde'), list('edgfba')])
+
+
 class TestCBS(unittest.TestCase):
     def setUp(self):
         self.graph = pathfinding.gen_example_graph(5, 2)
@@ -141,6 +160,9 @@ class TestCBS(unittest.TestCase):
     def testNonValidPath(self):
         # when the node is not within the graph, an exception is raised, because cost computation fails
         self.assertRaises(nx.NodeNotFound, pathfinding.CBS, self.graph, [('a', 'Z')])
+        self.graph.add_node('X', pos=(0.1, 0.1))
+        cbs = pathfinding.CBS(self.graph, [('a', 'b'), ('a', 'X')])
+        self.assertRaises(nx.NetworkXNoPath, cbs.run)
 
     def testCBSsetup(self):
         cbs = pathfinding.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=15)

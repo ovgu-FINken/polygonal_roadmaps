@@ -440,5 +440,21 @@ class CBS:
         return node
 
 
+def prioritized_plans(graph, start_goal, limit=10):
+    solution = []
+    for start, goal in start_goal:
+        node_occupancy = compute_node_occupancy(solution, limit=limit)
+        constraints = set()
+        for t, node in node_occupancy.keys():
+            if t > 0:
+                constraints.add((node, t))
+                constraints.add((node, t + 1))
+        print(constraints)
+        path = spacetime_astar(graph, start, goal, cost=compute_cost(graph, goal, limit=limit),
+                               limit=limit, node_constraints=constraints)
+        solution.append(path)
+    return solution
+
+
 if __name__ == "__main__":
     pass
