@@ -155,10 +155,6 @@ def poly_from_path(g, path, eps=0.05):
 
 
 def path_from_positions(g, start, goal):
-    g.set_edge_filter(None)
-    g.set_vertex_filter(None)
-    g.set_vertex_filter(g.vp['traversable'])
-    g.set_edge_filter(g.ep['traversable'])
     sn = find_nearest_node(g, start)
     gn = find_nearest_node(g, goal)
     return pathfinding.spatial_astar(g, sn, gn)

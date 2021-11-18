@@ -46,10 +46,19 @@ class TestPathPolygon(unittest.TestCase):
     def testFindNearestNode(self):
         p1 = self.graph.nodes()[30]['geometry'].get_center_np()
         n1 = geometry.find_nearest_node(self.graph, p1)
-        self.assertEquals(n1, 30)
+        self.assertEqual(n1, 30)
 
         # see if we find the point despite a slight perturbation
         p2 = self.graph.nodes()[70]['geometry'].get_center_np()
         p2 += np.array([0.1, -0.1])
         n2 = geometry.find_nearest_node(self.graph, p2)
-        self.assertEquals(n2, 70)
+        self.assertEqual(n2, 70)
+
+    def testPathFromPositions(self):
+        start = .2, .2
+        goal = .7, -1.7
+        path = geometry.path_from_positions(self.graph, start, goal)
+        self.assertEqual(path, [27, 26, 28, 30, 33, 64])
+
+        goal = 1, 1
+        self.assertRaises(nx.NetworkXNoPath, geometry.path_from_positions, self.graph, start, goal)
