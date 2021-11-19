@@ -68,3 +68,13 @@ class TestPathPolygon(unittest.TestCase):
         poly = geometry.poly_from_path(self.graph, path, eps=0.05)
         self.assertTrue(poly.is_valid)
         self.assertEqual(poly.geometryType(), "Polygon")
+
+    def testComputeStraightPath(self):
+        start = self.graph.nodes[27]['geometry'].center
+        goal = self.graph.nodes[64]['geometry'].center
+        path = [27, 26, 28, 30, 33, 64]
+        poly = geometry.poly_from_path(self.graph, path, eps=0.05)
+
+        line = geometry.waypoints_through_poly(self.graph, poly, start, goal, eps=0.05)
+        self.assertTrue(line.is_valid)
+        self.assertTrue(poly.buffer(0.08).contains(line))

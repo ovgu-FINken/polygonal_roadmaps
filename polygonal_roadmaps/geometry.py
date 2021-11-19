@@ -216,59 +216,6 @@ def gen_graph_nx(nodes, edges):
     return g
 
 
-def drawGraph(g,
-              inner=True,
-              outer=True,
-              center=True,
-              connections=True,
-              borderPolys=True,
-              show=True,
-              edge_weight=None,
-              node_weight=None):
-    wax = g.gp['wa']['working_area_x']
-    way = g.gp['wa']['working_area_y']
-    width = 6
-    height = width * (way[1] - way[0]) / (wax[1] - wax[0])
-
-    plt.figure(figsize=(width, height))
-    plot_vertices(g, outer, center, node_weight)
-
-    plot_edges(g, connections, borderPolys, edge_weight)
-    if show:
-        plt.show()
-
-
-def plot_edges(g, connections, borderPolys, edge_weight):
-    for ge in g.edges():
-        e = g.ep['geometry'][ge]
-        if connections:
-            lw = None
-            if edge_weight is not None:
-                lw = 4.0 * g.ep[edge_weight][ge] / g.ep[edge_weight].a.max()
-            plt.plot(*e.connection.xy, lw=lw, color='b', alpha=0.3)
-        if borderPolys and e.borderPoly is not None and not e.borderPoly.is_empty:
-            if e.borderPoly.geometryType() == 'MultiPolygon':
-                for p in e.borderPoly:
-                    plt.plot(*p.exterior.xy)
-            else:
-                plt.fill(*e.borderPoly.exterior.xy, alpha=0.1)
-
-
-def plot_vertices(g, outer, center, node_weight):
-    for v in g.iter_vertices():
-        n = g.vp['geometry'][v]
-        if n.inner and n.inner is not None:
-            plt.plot(*n.inner.exterior.xy, ':', color='black')
-        if outer:
-            plt.plot(*n.outer.exterior.xy, '--', color='black')
-        if center:
-            s = 5
-            if node_weight is not None:
-                s *= 2.0 * g.vp[node_weight][v] / g.vp[node_weight].a.max()
-
-            plt.plot(*n.center.xy, 'o', markersize=s, color='black')
-
-
 def find_nearest_node(g, p):
     dist = [np.linalg.norm(np.array(p) - g.nodes()[n]['geometry'].get_center_np()) for n in g.nodes()]
     return np.argmin(dist)
@@ -288,11 +235,11 @@ def waypoints_through_poly(g, poly, start, goal, eps=0.01):
     ep = point_on_border(g, poly, goal)
     # if endpoint is outside poly, use endpoint on border and append goal
     if ep is not None:
-        straight_path = compute_straight_path(g, poly, coords[-1], ep)
+        straight_path = compute_straight_path(poly, coords[-1], ep)
         coords += shorten_path(g, poly, straight_path)
         coords.append(goal)
     else:
-        straight_path = compute_straight_path(g, poly, coords[-1], goal)
+        straight_path = compute_straight_path(poly, coords[-1], goal)
         coords += shorten_path(g, poly, straight_path)
     coords = remove_close_points(coords, eps=eps)
     return LineString(coords)
@@ -319,7 +266,7 @@ def shorten_recursive(g, poly, coords, eps=0.01):
     if len(coords) < 4:
         return [coords[0]] + shorten_recursive(g, poly, coords[1:], eps=eps)
 
-    straight_segment = compute_straight_path(g, poly, coords[1], coords[-1], eps=eps)
+    straight_segment = compute_straight_path(poly, coords[1], coords[-1], eps=eps)
     # straight_segment = coords[1:]
     return [coords[0]] + shorten_recursive(g, poly, straight_segment, eps=eps)
 
@@ -360,7 +307,7 @@ def point_on_border(g, poly: Polygon, point: Point) -> Point:
     return inner.exterior.interpolate(d)
 
 
-def compute_straight_path(g, poly, start, goal, eps=None):
+def compute_straight_path(poly, start, goal, eps=None):
     line = LineString([start, goal])
     if line.length < 0.01 or line.within(poly):
         return [start, goal]
