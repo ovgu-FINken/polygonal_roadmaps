@@ -3,7 +3,6 @@ from scipy.spatial import Voronoi
 import shapely.geometry
 from shapely.geometry import Polygon, Point, MultiLineString, LineString
 import shapely.ops
-import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from skimage import io, measure
 import yaml
@@ -300,9 +299,9 @@ def point_on_border(g, poly: Polygon, point: Point) -> Point:
     """
     point = Point(point)
     if point.within(poly):
-        return None
+        return point
     sn = find_nearest_node(g, point)
-    inner = g.vp['geometry'][sn].inner
+    inner = g.nodes()[sn]['geometry'].inner
     d = inner.exterior.project(point)
     return inner.exterior.interpolate(d)
 

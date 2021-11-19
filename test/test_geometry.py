@@ -1,6 +1,8 @@
 import os
 import sys
 
+from shapely.geometry.linestring import LineString
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 import networkx as nx
@@ -77,4 +79,15 @@ class TestPathPolygon(unittest.TestCase):
 
         line = geometry.waypoints_through_poly(self.graph, poly, start, goal, eps=0.05)
         self.assertTrue(line.is_valid)
-        self.assertTrue(poly.buffer(0.08).contains(line))
+        self.assertTrue(poly.buffer(0.01).contains(line))
+        self.assertTrue(poly.buffer(0.01).covers(line))
+        # test a path, where start and goal position ar not both in the inner area of the cell
+        start = .2, .2
+        goal = .7, -2.0
+        line = geometry.waypoints_through_poly(self.graph, poly, start, goal, eps=0.05)
+        self.assertTrue(line.is_valid)
+        self.assertFalse(poly.buffer(0.01).contains(line))
+        innert_part = LineString(line.coords[1:-1])
+        self.assertTrue(poly.buffer(0.01).contains(innert_part))
+        self.assertFalse(poly.buffer(0.01).contains(line))
+        self.assertFalse(poly.buffer(0.01).covers(line))
