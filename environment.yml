@@ -15,4 +15,5 @@ dependencies:
   - snakeviz>=2.1.0
   - pip:
     - pytest>=6.2.5
+    - pytest-cov
 prefix: /Users/sebastian/opt/anaconda3/envs/random_progress_model
