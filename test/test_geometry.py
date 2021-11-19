@@ -59,6 +59,12 @@ class TestPathPolygon(unittest.TestCase):
         goal = .7, -1.7
         path = geometry.path_from_positions(self.graph, start, goal)
         self.assertEqual(path, [27, 26, 28, 30, 33, 64])
-
+        # test non valid path (start and goal are not connected)
         goal = 1, 1
         self.assertRaises(nx.NetworkXNoPath, geometry.path_from_positions, self.graph, start, goal)
+
+    def testPolyFromPath(self):
+        path = [27, 26, 28, 30, 33, 64]
+        poly = geometry.poly_from_path(self.graph, path, eps=0.05)
+        self.assertTrue(poly.is_valid)
+        self.assertEqual(poly.geometryType(), "Polygon")
