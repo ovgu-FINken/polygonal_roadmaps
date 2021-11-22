@@ -57,11 +57,13 @@ def pred_to_list(g, pred, start, goal):
     return path
 
 
-def pad_path(path: list, limit=10) -> list:
+def pad_path(path: list, limit: int = None) -> list:
+    if limit is None:
+        return path
     return path + [path[-1] for _ in range(limit - len(path))]
 
 
-def compute_node_conflicts(paths: list, limit: int = 10) -> list:
+def compute_node_conflicts(paths: list, limit: int = None) -> list:
     node_occupancy = compute_node_occupancy(paths, limit=limit)
 
     conflicts = []
@@ -71,7 +73,7 @@ def compute_node_conflicts(paths: list, limit: int = 10) -> list:
     return frozenset(conflicts)
 
 
-def compute_node_occupancy(paths: list, limit: int = 10) -> dict:
+def compute_node_occupancy(paths: list, limit: int = None) -> dict:
     node_occupancy = {}
     for i, path in enumerate(paths):
         for t, node in enumerate(pad_path(path, limit=limit)):
@@ -82,7 +84,7 @@ def compute_node_occupancy(paths: list, limit: int = 10) -> dict:
     return node_occupancy
 
 
-def compute_edge_conflicts(paths, limit=10):
+def compute_edge_conflicts(paths, limit: int = None):
     node_occupancy = compute_node_occupancy(paths, limit=limit)
 
     conflicts = []
@@ -99,6 +101,15 @@ def compute_edge_conflicts(paths, limit=10):
                     else:
                         conflicts.append(frozenset([NodeConstraint(time=t, node=node, agent=i)]))
     return frozenset(conflicts)
+
+
+def compute_all_conflicts(solution, limit: int = None):
+    conflicts = set()
+    for conflict in compute_node_conflicts(solution, limit=limit):
+        conflicts |= conflict
+    for conflict in compute_edge_conflicts(solution, limit=limit):
+        conflicts |= conflict
+    return conflicts
 
 
 def spatial_astar(G, source, target):
@@ -334,15 +345,15 @@ def compute_normalized_weight(g, weight):
 
 
 class CBS:
-    def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000):
+    def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000, pad_paths=True):
         self.start_goal = start_goal
+        self.pad_paths = pad_paths
         self.g = g
         compute_normalized_weight(self.g, weight)
         self.limit = limit
         self.root = CBSNode(constraints=agent_constraints)
         self.cache = {}
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
-        self.cache = {}
         self.costs = {agent: compute_cost(self.g, start_goal[agent][1], weight="weight") for agent in self.agents}
         self.best = None
         self.max_iter = max_iter
@@ -371,28 +382,32 @@ class CBS:
         for _ in range(self.max_iter):
             if not self.step():
                 break
+            if self.best is not None:
+                # with the current setup we are guaranted to find the best solution in the first try
+                return self.best
         if self.best is None:
             raise nx.NetworkXNoPath()
         return self.best.solution
 
     def step(self):
-        if self.open:
-            self.iteration_counter += 1
-            node = self.pop()
-            for child in node.children:
-                child = self.evaluate_node(child)
-                child.open = False
-                self.push(child)
-            return True
+        if not self.open:
+            return False
         # return false if all nodes are already closed
-        return False
+        self.iteration_counter += 1
+        node = self.pop()
+        for child in node.children:
+            child = self.evaluate_node(child)
+            child.open = False
+            if not child.final:
+                self.push(child)
+        return True
 
     def evaluate_node(self, node):
         node.solution = []
         for agent in self.agents:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
             nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
-            if nc not in self.cache:
+            if (agent, nc) not in self.cache:
                 sn, gn = self.start_goal[agent]
                 try:
                     self.cache[agent, nc] = spacetime_astar(
@@ -412,25 +427,21 @@ class CBS:
             node.final = True
             return node
 
-        node.conflicts = set()
-        for conflict in compute_node_conflicts(node.solution):
-            node.conflicts |= conflict
-
-        for conflict in compute_edge_conflicts(node.solution):
-            node.conflicts |= conflict
+        limit = self.limit if self.pad_paths else None
+        node.conflicts = compute_all_conflicts(node.solution, limit=limit)
 
         if not len(node.conflicts):
             node.valid = True
             node.final = True
             self.update_best(node)
             return node
+
         # filter out conflicts that are already in the constraints (happens if the conflict is after the goal is met)
         node.conflicts = set(c for c in node.conflicts if c not in node.constraints)
 
         children = []
         for constraint in node.conflicts:
             if constraint in node.constraints:
-                # print(f"constraint: {constraint}, NC: {node.constraints}")
                 continue
             constraints = frozenset({constraint} | node.constraints)
             if constraints not in self.duplicate_cache:

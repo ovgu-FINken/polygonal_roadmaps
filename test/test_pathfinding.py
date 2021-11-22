@@ -217,5 +217,5 @@ class TestCBS(unittest.TestCase):
             exception_raised = True
 
         self.assertFalse(exception_raised, msg="exception should not be raised, as path is valid")
-        self.assertIn(best, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
+        self.assertIn(best.solution, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
