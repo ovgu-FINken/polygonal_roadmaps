@@ -107,8 +107,8 @@ def spatial_astar(G, source, target):
     return nx.astar_path(G, source=source, target=target, heuristic=heuristic, weight='dist')
 
 
-def compute_cost(G, target, limit=100):
-    return nx.single_source_shortest_path_length(G, target, cutoff=limit)
+def compute_cost(G, target, weight=None):
+    return nx.shortest_path_length(G, target=target, weight=weight)
 
 
 def temporal_node_list(G, limit, node_constraints):
@@ -132,7 +132,7 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
 
     push = heappush
     pop = heappop
-    weight = _weight_function(G, "dist")
+    weight_fn = _weight_function(G, "weight")
 
     # The queue stores priority, node, cost to reach, and parent.
     # Uses Python heapq to keep in priority order.
@@ -175,8 +175,7 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
         for neighbor, w in G[node].items():
             if (neighbor, t) in node_constraints:
                 continue
-
-            ncost = dist + weight(node, neighbor, w)
+            ncost = dist + weight_fn(node, neighbor, w)
             t_neighbor = f'n{neighbor}t{t}'
             if t_neighbor in enqueued:
                 qcost, h = enqueued[t_neighbor]
@@ -322,16 +321,29 @@ class CBSNode:
         return graph
 
 
+def compute_normalized_weight(g, weight):
+    if weight is not None:
+        max_dist = max(nx.get_edge_attributes(g, weight).values())
+        # add a weight attribute, which normalizes the distance between nodes by the maximum distane
+        # the maximum distance will get a weight of 1, waiting action will also get the weight of 1+eps
+        for n1, n2 in g.edges():
+            g.edges()[n1, n2]["weight"] = g.edges()[n1, n2][weight] / max_dist
+    else:
+        for n1, n2 in g.edges():
+            g.edges()[n1, n2]['weight'] = 1.0
+
+
 class CBS:
-    def __init__(self, g, start_goal, agent_constraints=None, limit=10, max_iter=10000):
+    def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000):
         self.start_goal = start_goal
         self.g = g
+        compute_normalized_weight(self.g, weight)
         self.limit = limit
         self.root = CBSNode(constraints=agent_constraints)
         self.cache = {}
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
         self.cache = {}
-        self.costs = {agent: compute_cost(self.g, start_goal[agent][1], limit=limit) for agent in self.agents}
+        self.costs = {agent: compute_cost(self.g, start_goal[agent][1], weight="weight") for agent in self.agents}
         self.best = None
         self.max_iter = max_iter
         self.iteration_counter = 0
@@ -346,6 +358,7 @@ class CBS:
         self.push(self.root)
 
     def push(self, node):
+        # nodes are sortable, the sort-order of those heaps lead to the order in the heap
         heappush(self.open, node)
 
     def pop(self):
@@ -442,6 +455,7 @@ class CBS:
 
 def prioritized_plans(graph, start_goal, limit=10):
     solution = []
+    compute_normalized_weight(graph, "dist")
     for start, goal in start_goal:
         node_occupancy = compute_node_occupancy(solution, limit=limit)
         constraints = set()
@@ -450,7 +464,7 @@ def prioritized_plans(graph, start_goal, limit=10):
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         print(constraints)
-        path = spacetime_astar(graph, start, goal, cost=compute_cost(graph, goal, limit=limit),
+        path = spacetime_astar(graph, start, goal, cost=compute_cost(graph, goal, weight="weight"),
                                limit=limit, node_constraints=constraints)
         solution.append(path)
     return solution
