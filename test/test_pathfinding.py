@@ -172,11 +172,6 @@ class TestCBS(unittest.TestCase):
         self.assertLess(cbs.root.fitness, 2 * 100)  # fitness should be less than agents * limit
         # our example has conflicts, so the root node should not be the final node
         self.assertEqual(cbs.root.solution, [(list("abcde")), list("edcba")])
-        expected = frozenset([
-            pathfinding.NodeConstraint(agent=0, time=2, node='c'), pathfinding.NodeConstraint(agent=1, time=2, node='c')
-        ])
-        self.assertEqual(cbs.root.conflicts, expected)
-
         self.assertFalse(cbs.root.final)
 
     def testTraversal(self):

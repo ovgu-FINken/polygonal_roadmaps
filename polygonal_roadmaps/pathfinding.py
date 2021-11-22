@@ -104,12 +104,7 @@ def compute_edge_conflicts(paths, limit: int = None):
 
 
 def compute_all_conflicts(solution, limit: int = None):
-    conflicts = set()
-    for conflict in compute_node_conflicts(solution, limit=limit):
-        conflicts |= conflict
-    for conflict in compute_edge_conflicts(solution, limit=limit):
-        conflicts |= conflict
-    return conflicts
+    return compute_node_conflicts(solution, limit=limit) | compute_edge_conflicts(solution, limit=limit)
 
 
 def spatial_astar(G, source, target):
@@ -273,7 +268,7 @@ class CBSNode:
     def tuple_repr(self):
         conflicts = len(self.conflicts) if self.conflicts else 0
         constraints = len(self.constraints) if self.constraints else 0
-        return self.fitness, conflicts, constraints
+        return conflicts, self.fitness, constraints
 
     def __eq__(self, other):
         return self.tuple_repr() == other.tuple_repr()
@@ -382,12 +377,9 @@ class CBS:
         for _ in range(self.max_iter):
             if not self.step():
                 break
-            if self.best is not None:
-                # with the current setup we are guaranted to find the best solution in the first try
-                return self.best
         if self.best is None:
             raise nx.NetworkXNoPath()
-        return self.best.solution
+        return self.best
 
     def step(self):
         if not self.open:
@@ -395,6 +387,8 @@ class CBS:
         # return false if all nodes are already closed
         self.iteration_counter += 1
         node = self.pop()
+        if self.iteration_counter % 100 == 0:
+            print(f"{self.iteration_counter / 100}: f = {node.fitness}, conflicts = {len(node.conflicts)}")
         for child in node.children:
             child = self.evaluate_node(child)
             child.open = False
@@ -436,11 +430,11 @@ class CBS:
             self.update_best(node)
             return node
 
-        # filter out conflicts that are already in the constraints (happens if the conflict is after the goal is met)
-        node.conflicts = set(c for c in node.conflicts if c not in node.constraints)
-
+        # get one of the conflicts, to create constraints from
+        # each conflict must be resolved in some way
+        working_conflict = next(iter(node.conflicts))
         children = []
-        for constraint in node.conflicts:
+        for constraint in working_conflict:
             if constraint in node.constraints:
                 continue
             constraints = frozenset({constraint} | node.constraints)
