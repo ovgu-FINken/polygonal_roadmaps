@@ -32,8 +32,8 @@ class TestLowLevelSearch(unittest.TestCase):
         result = pathfinding.sum_of_cost([[2, 3], None])
         self.assertEqual(result, np.inf)
 
-        result = pathfinding.sum_of_cost(['abcde', 'cc'], graph=self.graph)
-        self.assertAlmostEqual(result, 4.1, places=1)
+        result = pathfinding.sum_of_cost(['abcde', 'cc'], graph=self.graph, weight="dist")
+        self.assertAlmostEqual(result, 5.0, places=1)
 
     def testPadPath(self):
         path = [1, 2, 3]
