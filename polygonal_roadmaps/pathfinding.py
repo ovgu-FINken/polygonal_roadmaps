@@ -4,6 +4,7 @@ import networkx as nx
 from networkx.algorithms.shortest_paths.weighted import _weight_function
 from heapq import heappush, heappop
 from itertools import count
+from functools import partial
 
 import logging
 
@@ -29,6 +30,36 @@ def gen_example_graph(a, b):
         example.edges()[source, sink]['dist'] = np.linalg.norm(p1 - p2)
 
     return example
+
+
+def read_movingai_map(path):
+    # read a map given with the movingai-framework
+    with open(path) as map_file:
+        lines = map_file.readlines()
+    height = int("".join([d for d in lines[1] if d in list("0123456789")]))
+    width = int("".join([d for d in lines[2] if d in list("0123456789")]))
+
+    graph = nx.grid_2d_graph(width, height)
+    for edge in graph.edges():
+        graph.edges()[edge]['dist'] = 1
+    graph.add_edges_from(
+        [((x, y), (x + 1, y + 1)) for x in range(width - 1) for y in range(height - 1)],
+        dist=np.sqrt(2)
+    )
+    graph.add_edges_from(
+        [((x + 1, y), (x, y + 1)) for x in range(width - 1) for y in range(height - 1)],
+        dist=np.sqrt(2)
+    )
+    data = lines[4:]
+    blocked = list("@OTW")
+    for i, row in enumerate(data):
+        for j, pixel in enumerate(row[:-1]):
+            if pixel in blocked:
+                graph.remove_node((i, j))
+
+    for node in graph.nodes():
+        graph.nodes()[node]["pos"] = node
+    return graph
 
 
 @dataclass(eq=True, frozen=True, init=True)
@@ -109,10 +140,10 @@ def compute_all_conflicts(solution, limit: int = None):
     return compute_node_conflicts(solution, limit=limit) | compute_edge_conflicts(solution, limit=limit)
 
 
-def spatial_astar(G, source, target):
+def spatial_astar(G, source, target, weight=None):
     def heuristic(u, v):
         return np.linalg.norm(np.array(G.nodes()[u]['pos']) - np.array(G.nodes()[v]['pos']))
-    return nx.astar_path(G, source=source, target=target, heuristic=heuristic, weight='dist')
+    return nx.astar_path(G, source=source, target=target, heuristic=heuristic, weight=weight)
 
 
 def compute_cost(G, target, weight=None):
@@ -127,7 +158,7 @@ def temporal_node_list(G, limit, node_constraints):
     return nodelist
 
 
-def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
+def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constraints=None):
     # we search the path one time with normal A*, so we know that all nodes exist and are connected
     if not node_constraints:
         spatial_path = spatial_astar(G, source, target)
@@ -135,8 +166,10 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
             raise nx.NetworkXNoPath()
         return spatial_astar(G, source, target)
 
-    def heuristic(u):
-        return cost[u]
+    def default_heuristic(u):
+        return nx.shortest_path_length(G, source=u, target=target, weight="weight")
+    if heuristic is None:
+        heuristic = default_heuristic
 
     push = heappush
     pop = heappop
@@ -202,7 +235,7 @@ def spacetime_astar(G, source, target, cost, limit=100, node_constraints=None):
         if (node, t) not in node_constraints:
             neighbor = node
 
-            ncost = dist + 1
+            ncost = dist + 1.0001
             t_neighbor = f'n{neighbor}t{t}'
             if t_neighbor in enqueued:
                 qcost, h = enqueued[t_neighbor]
@@ -233,13 +266,15 @@ def spacetime_astar_calculate_return_path(nodes, explored, curnode, parent):
 def sum_of_cost(paths, graph=None, weight=None):
     if paths is None or None in paths or [] in paths:
         return np.inf
+    if not len(paths):
+        return np.inf
     if graph is None or weight is None:
         return sum([len(p) for p in paths])
     cost = 0
     for path in paths:
         for n1, n2 in zip(path[:-1], path[1:]):
             if n1 == n2:
-                cost += 1.0
+                cost += 1.0001
             else:
                 cost += graph.edges()[n1, n2][weight]
     return cost
@@ -338,12 +373,15 @@ def compute_normalized_weight(g, weight):
             g.edges()[n1, n2]["weight"] = g.edges()[n1, n2][weight] / max_dist
     else:
         for n1, n2 in g.edges():
-            g.edges()[n1, n2]['weight'] = 1.0
+            g.edges()[n1, n2]['weight'] = 1.0001
 
 
 class CBS:
     def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000, pad_paths=True):
         self.start_goal = start_goal
+        for start, goal in start_goal:
+            if start not in g.nodes() or goal not in g.nodes():
+                raise nx.NodeNotFound()
         self.pad_paths = pad_paths
         self.g = g
         compute_normalized_weight(self.g, weight)
@@ -351,12 +389,25 @@ class CBS:
         self.root = CBSNode(constraints=agent_constraints)
         self.cache = {}
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
-        self.costs = {agent: compute_cost(self.g, start_goal[agent][1], weight="weight") for agent in self.agents}
+        self.costs = {agent: {} for agent in self.agents}
         self.best = None
         self.max_iter = max_iter
         self.iteration_counter = 0
         self.duplicate_cache = set()
         self.duplicate_counter = 0
+
+    def heuristic(self, node, agent=None):
+        if node not in self.costs[agent]:
+            _, goal = self.start_goal[agent]
+            self.costs[agent][goal] = 0
+            path = spatial_astar(self.g, goal, node, weight="weight")
+            assert(path[-1] == node)
+            cost = 0
+            for n1, n2 in zip(path[:-1], path[1:]):
+                cost += self.g.edges()[n1, n2]["weight"]
+                if n2 not in self.costs[agent]:
+                    self.costs[agent][n2] = cost
+        return self.costs[agent][node]
 
     def setup(self):
         self.cache = {}
@@ -401,55 +452,70 @@ class CBS:
 
     def repair_node_solution(self, node):
         # implementation: quick and dirty
+        limit = self.limit if self.pad_paths else None
         constraints = set(node.constraints)
         for agent in self.agents:
-            solution = self.compute_node_solution(CBSNode(constraints))
+            solution = self.compute_node_solution(CBSNode(constraints), max_agents=agent + 1)
             if solution is None or None in solution:
                 # unsuccessful
                 return
-            for t, n in enumerate(solution[agent]):
+            for t, n in enumerate(pad_path(solution[agent], limit=limit)):
                 # add constraints to the paths of all the following agents
                 constraints |= {NodeConstraint(agent=ti, time=t, node=n) for ti in self.agents[agent:]}
                 constraints |= {NodeConstraint(agent=ti, time=t + 1, node=n) for ti in self.agents[agent:]}
+            logging.debug(f"prioritized plan: {agent}")
         fake_node = CBSNode(frozenset(constraints))
-        fake_node.solution = solution
+        fake_node.solution = self.compute_node_solution(CBSNode(constraints))
         fake_node.fitness = sum_of_cost(node.solution, graph=self.g, weight="weight")
-        node.children = (*node.children, fake_node)
+        fake_node.final = True
+        fake_node.valid = True
+        if self.best is not None:
+            logging.debug(f"before: {self.best.fitness}")
         self.update_best(fake_node)
+        logging.debug(f"after: {self.best.fitness}")
+        node.children = (*node.children, fake_node)
 
-    def compute_node_solution(self, node):
+    def compute_node_solution(self, node, max_agents=None):
         solution = []
-        for agent in self.agents:
+        if max_agents is None:
+            max_agents = len(self.agents)
+        for agent in self.agents[:max_agents]:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
             nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
             if (agent, nc) not in self.cache:
                 sn, gn = self.start_goal[agent]
                 try:
                     self.cache[agent, nc] = spacetime_astar(
-                        self.g, sn, gn, self.costs[agent], node_constraints=nc, limit=self.limit)
+                        self.g, sn, gn, heuristic=partial(self.heuristic, agent=agent), node_constraints=nc, limit=self.limit)
                 except nx.NetworkXNoPath:
                     self.cache[agent, nc] = None
             solution.append(self.cache[agent, nc])
         return solution
 
     def evaluate_node(self, node):
+        if node.final:
+            return node
         node.solution = self.compute_node_solution(node)
         node.fitness = sum_of_cost(node.solution, graph=self.g, weight="weight")
 
-        if node.fitness > len(self.agents) * self.limit:
+        if node.fitness > len(self.agents) * self.limit * 10:
             # if no valid solution exists, this node is final
             node.final = True
+            logging.debug("set node to final because of high fitness value")
             return node
 
-        if self.best is not None and node.fitness > self.best.fitness:
+        if self.best is not None and node.fitness >= self.best.fitness:
             # if we add conflicts, the path only gets longer, hence this is not the optimal solution
             node.final = True
+            logging.debug(f"set node to final because of best fitness value: {node.fitness} >= {self.best.fitness}")
             return node
 
         limit = self.limit if self.pad_paths else None
         node.conflicts = compute_all_conflicts(node.solution, limit=limit)
 
         if not len(node.conflicts):
+            logging.debug("set node to final because no conflicts")
+
             node.valid = True
             node.final = True
             self.update_best(node)
@@ -473,14 +539,20 @@ class CBS:
             node.children = tuple(children)
             return node
 
+        logging.warn("no children added, node is not valid")
+        logging.debug(f"{node.conflicts}, {node.constraints}")
         node.final = True
         return node
 
     def update_best(self, node):
-        if self.best is None or node.fitness < self.best.fitness:
-            logging.info(f'Found new best solution at iteration {self.iteration_counter}.')
+        if not node.valid:
+            return self.best
+        if self.best is None:
+            logging.info(f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}')
             self.best = node
-        return node
+        if node.fitness <= self.best.fitness:
+            logging.info(f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}, best was: {self.best.fitness}')
+            self.best = node
 
 
 def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True):
@@ -497,7 +569,7 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         logging.debug(constraints)
-        path = spacetime_astar(graph, start, goal, cost=compute_cost(graph, goal, weight="weight"),
+        path = spacetime_astar(graph, start, goal,
                                limit=limit, node_constraints=constraints)
         solution.append(path)
     return solution

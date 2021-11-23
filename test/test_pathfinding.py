@@ -66,17 +66,15 @@ class TestLowLevelSearch(unittest.TestCase):
         self.graph.add_node('Z', pos=(0.5, 0.5))
         self.assertRaises(nx.NetworkXNoPath, pathfinding.spacetime_astar, self.graph, 'a', 'Z', None), None
 
-        cost = pathfinding.compute_cost(self.graph, 'e')
-        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', cost, node_constraints=[('b', 1)])
+        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('b', 1)])
         expected = list('aabcde')
         self.assertEqual(path, expected)
 
-        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', cost, node_constraints=[('c', 2)])
+        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('c', 2)])
         expected = [list('aabcde'), list('abbcde'), list('abfgde')]
         self.assertIn(path, expected)
 
-        cost = pathfinding.compute_cost(self.graph, 'b')
-        path = pathfinding.spacetime_astar(self.graph, 'd', 'b', cost, node_constraints=[('b', 3)])
+        path = pathfinding.spacetime_astar(self.graph, 'd', 'b', node_constraints=[('b', 3)])
         expected = list('dcb')
         self.assertEqual(path, expected)
 
