@@ -117,27 +117,55 @@ def compute_node_occupancy(paths: list, limit: int = None) -> dict:
     return node_occupancy
 
 
-def compute_edge_conflicts(paths, limit: int = None):
+@dataclass(frozen=True, eq=True, init=True)
+class Conflict:
+    k: int
+    conflicting_agents: frozenset
+
+    def generate_constraints(self):
+        """ generate a set of constraints for each conflicting agent, which resolves the conflict"""
+        return self.conflicting_agents
+
+
+def compute_k_robustness_conflicts(paths, limit: int = None, k: int = 0):
     node_occupancy = compute_node_occupancy(paths, limit=limit)
 
     conflicts = []
     for i, path in enumerate(paths):
         for t, node in enumerate(path):
-            if t < 1:
+            if t < k:
                 continue
-            if (t - 1, node) in node_occupancy.keys():
-                j = node_occupancy[t - 1, node][0]
-                if j != i:
-                    if t > 1:
-                        conflicts.append(frozenset([NodeConstraint(time=t, node=node, agent=i),
-                                         NodeConstraint(time=t - 1, node=node, agent=j)]))
-                    else:
-                        conflicts.append(frozenset([NodeConstraint(time=t, node=node, agent=i)]))
-    return frozenset(conflicts)
+            if (t - k, node) not in node_occupancy:
+                continue
+            # compute set of agents occupying the node at time t-k, without i
+            conflicting_agents = set(node_occupancy[t - k, node])
+            conflicting_agents.discard(i)
+            # if the set of conflicting agents is empty, there is no conflict
+            if not len(conflicting_agents):
+                continue
+            # we now have established that there is a conflict
+            # this means the agent itself could move to resolve the conflict
+            constraints = {
+                NodeConstraint(time=t, node=node, agent=i)
+            }
+            # or all the other agents could move to resolve the conflict
+            # however there is a special case: if t - k == 0 the other agents can not move
+            # (because the starting position is fixed)
+            if t != k:
+                constraints |= {NodeConstraint(time=t - k, node=node, agent=j) for j in conflicting_agents}
+            conflicts.append(Conflict(k=k, conflicting_agents=frozenset(constraints)))
+    return set(conflicts)
 
 
-def compute_all_conflicts(solution, limit: int = None):
-    return compute_node_conflicts(solution, limit=limit) | compute_edge_conflicts(solution, limit=limit)
+def compute_all_k_conflicts(solution, limit: int = None, k=1):
+    """compute the conflicts present in a solution
+    Each conflict is a set of triples {(agent, time, node)
+    - out of each conflict at least one agent has to move away to resolve the conflict
+    If there is no conflict the solution is valid
+    Conflicts are used to generate constraints
+    """
+    conflicts = [compute_k_robustness_conflicts(solution, limit=limit, k=ik) for ik in range(k + 1)]
+    return frozenset().union(*conflicts)
 
 
 def spatial_astar(G, source, target, weight=None):
@@ -377,7 +405,7 @@ def compute_normalized_weight(g, weight):
 
 
 class CBS:
-    def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000, pad_paths=True):
+    def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000, pad_paths=True, k_robustness=1):
         self.start_goal = start_goal
         for start, goal in start_goal:
             if start not in g.nodes() or goal not in g.nodes():
@@ -395,6 +423,7 @@ class CBS:
         self.iteration_counter = 0
         self.duplicate_cache = set()
         self.duplicate_counter = 0
+        self.k_robustness = k_robustness
 
     def heuristic(self, node, agent=None):
         if node not in self.costs[agent]:
@@ -511,7 +540,7 @@ class CBS:
             return node
 
         limit = self.limit if self.pad_paths else None
-        node.conflicts = compute_all_conflicts(node.solution, limit=limit)
+        node.conflicts = compute_all_k_conflicts(node.solution, limit=limit, k=self.k_robustness)
 
         if not len(node.conflicts):
             logging.debug("set node to final because no conflicts")
@@ -525,7 +554,7 @@ class CBS:
         # each conflict must be resolved in some way
         working_conflict = next(iter(node.conflicts))
         children = []
-        for constraint in working_conflict:
+        for constraint in working_conflict.generate_constraints():
             if constraint in node.constraints:
                 continue
             constraints = frozenset({constraint} | node.constraints)
@@ -551,7 +580,8 @@ class CBS:
             logging.info(f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}')
             self.best = node
         if node.fitness <= self.best.fitness:
-            logging.info(f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}, best was: {self.best.fitness}')
+            logging.info(
+                f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}, best was: {self.best.fitness}')
             self.best = node
 
 

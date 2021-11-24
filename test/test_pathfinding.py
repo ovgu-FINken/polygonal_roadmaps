@@ -121,37 +121,40 @@ class TestCBS(unittest.TestCase):
         conflicts = pathfinding.compute_node_conflicts([[0, 1, 4, 5], [5, 4, 1, 0]], limit=10)
         self.assertEqual(conflicts, frozenset([]))
 
-    def test_compute_edge_conflicts(self):
+    def test_compute_1_robust_conflicts(self):
         path1 = [1, 2]
         path2 = [3, 4]
-        conflicts = pathfinding.compute_edge_conflicts([path1, path2], limit=10)
+        conflicts = pathfinding.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
         self.assertEqual(conflicts, frozenset())
 
-        conflicts = pathfinding.compute_edge_conflicts([[0, 1, 4, 5], [2, 3]], limit=10)
+        conflicts = pathfinding.compute_k_robustness_conflicts([[0, 1, 4, 5], [2, 3]], limit=10, k=1)
         self.assertEqual(conflicts, frozenset())
 
         # following conflict
         path1 = [1, 2, 3]
         path2 = [2, 3, 4]
-        conflicts = pathfinding.compute_edge_conflicts([path1, path2], limit=10)
+        conflicts = pathfinding.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
         self.assertEqual(
             conflicts,
             frozenset([
-                frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=2)]),
-                frozenset([pathfinding.NodeConstraint(agent=0, time=2, node=3),
-                          pathfinding.NodeConstraint(agent=1, time=1, node=3)])
+                pathfinding.Conflict(k=1, conflicting_agents=frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=2)])),
+                pathfinding.Conflict(k=1, conflicting_agents=frozenset(
+                    [pathfinding.NodeConstraint(agent=0, time=2, node=3),
+                     pathfinding.NodeConstraint(agent=1, time=1, node=3)]))
             ])
         )
 
         # swapping conflict
         path1 = [1, 2, 3, 4]
         path2 = [4, 3, 2, 1]
-        conflicts = pathfinding.compute_edge_conflicts([path1, path2], limit=10)
+        conflicts = pathfinding.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
         expected = frozenset([
-            frozenset([pathfinding.NodeConstraint(agent=0, time=2, node=3),
-                      pathfinding.NodeConstraint(agent=1, time=1, node=3)]),
-            frozenset([pathfinding.NodeConstraint(agent=1, time=2, node=2),
-                      pathfinding.NodeConstraint(agent=0, time=1, node=2)])
+            pathfinding.Conflict(k=1, conflicting_agents=frozenset(
+                [pathfinding.NodeConstraint(agent=0, time=2, node=3),
+                 pathfinding.NodeConstraint(agent=1, time=1, node=3)])),
+            pathfinding.Conflict(k=1, conflicting_agents=frozenset(
+                [pathfinding.NodeConstraint(agent=1, time=2, node=2),
+                 pathfinding.NodeConstraint(agent=0, time=1, node=2)]))
         ])
         self.assertEqual(conflicts, expected)
 
