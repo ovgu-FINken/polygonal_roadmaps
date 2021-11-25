@@ -54,11 +54,13 @@ class TestLowLevelSearch(unittest.TestCase):
         self.assertRaises(nx.NetworkXNoPath, pathfinding.spatial_astar, self.graph, 'a', 'Z')
 
     def testSpaceTimeAStar(self):
-        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', None)
+        for n1, n2 in self.graph.edges():
+            self.graph.edges()[n1, n2]['weight'] = self.graph.edges()[n1, n2]['dist']
+        path, _ = pathfinding.spacetime_astar(self.graph, 'a', 'e', None)
         expected = list('abcde')
         self.assertEqual(path, expected)
 
-        path = pathfinding.spacetime_astar(self.graph, 'c', 'a', None)
+        path, _ = pathfinding.spacetime_astar(self.graph, 'c', 'a', None)
         expected = list('cba')
         self.assertEqual(path, expected)
 
@@ -66,15 +68,15 @@ class TestLowLevelSearch(unittest.TestCase):
         self.graph.add_node('Z', pos=(0.5, 0.5))
         self.assertRaises(nx.NetworkXNoPath, pathfinding.spacetime_astar, self.graph, 'a', 'Z', None), None
 
-        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('b', 1)])
+        path, _ = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('b', 1)])
         expected = list('aabcde')
         self.assertEqual(path, expected)
 
-        path = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('c', 2)])
+        path, _ = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('c', 2)])
         expected = [list('aabcde'), list('abbcde'), list('abfgde')]
         self.assertIn(path, expected)
 
-        path = pathfinding.spacetime_astar(self.graph, 'd', 'b', node_constraints=[('b', 3)])
+        path, _ = pathfinding.spacetime_astar(self.graph, 'd', 'b', node_constraints=[('b', 3)])
         expected = list('dcb')
         self.assertEqual(path, expected)
 

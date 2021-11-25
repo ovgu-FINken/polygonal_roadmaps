@@ -205,7 +205,7 @@ def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constrain
         spatial_path = spatial_astar(G, source, target)
         if len(spatial_path) > limit:
             raise nx.NetworkXNoPath()
-        return spatial_astar(G, source, target)
+        return spatial_path, sum_of_cost([spatial_path], graph=G, weight="weight")
 
     def default_heuristic(u):
         return nx.shortest_path_length(G, source=u, target=target, weight="weight")
@@ -236,7 +236,7 @@ def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constrain
         # Pop the smallest item from queue.
         _, __, curnode, dist, parent = pop(queue)
         if nodes[curnode]['n'] == target:
-            return spacetime_astar_calculate_return_path(nodes, explored, curnode, parent)
+            return spacetime_astar_calculate_return_path(nodes, explored, curnode, parent), dist
 
         if curnode in explored:
             # Do not override the parent of starting node
@@ -312,18 +312,20 @@ def solution_valid(solution: list) -> bool:
     return True
 
 
-def sum_of_cost(paths, graph=None, weight=None):
+def sum_of_cost(paths, graph=None, weight=None) -> float:
     if not solution_valid(paths):
         return np.inf
     if graph is None or weight is None:
         return sum([len(p) for p in paths])
     cost = 0
     for path in paths:
-        for n1, n2 in zip(path[:-1], path[1:]):
+        n1 = path[0]
+        for n2 in path[1:]:
             if n1 == n2:
                 cost += 1.0001
             else:
                 cost += graph.edges()[n1, n2][weight]
+            n1 = n2
     return cost
 
 
@@ -516,7 +518,7 @@ class CBS:
         limit = self.limit if self.pad_paths else None
         constraints = set(node.constraints)
         for agent in self.agents:
-            solution = self.compute_node_solution(CBSNode(constraints), max_agents=agent + 1)
+            solution, _ = self.compute_node_solution(CBSNode(constraints), max_agents=agent + 1)
             if not solution_valid(solution):
                 # unsuccessful
                 logging.debug("Repairing Solution is not successful")
@@ -527,8 +529,7 @@ class CBS:
                     constraints |= {NodeConstraint(agent=ti, time=t + k, node=n) for ti in self.agents[agent:]}
             logging.debug(f"prioritized plan: {agent}")
         fake_node = CBSNode(frozenset(constraints))
-        fake_node.solution = self.compute_node_solution(fake_node)
-        fake_node.fitness = self.compute_node_fitness(fake_node)
+        fake_node.solution, fake_node.fitness = self.compute_node_solution(fake_node)
         fake_node.final = True
         fake_node.valid = True
         if self.best is not None:
@@ -541,6 +542,8 @@ class CBS:
         solution = []
         if max_agents is None:
             max_agents = len(self.agents)
+        # sum of cost
+        soc = 0
         for agent in self.agents[:max_agents]:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
             nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
@@ -550,9 +553,11 @@ class CBS:
                     self.cache[agent, nc] = spacetime_astar(
                         self.g, sn, gn, heuristic=partial(self.heuristic, agent=agent), node_constraints=nc, limit=self.limit)
                 except nx.NetworkXNoPath:
-                    self.cache[agent, nc] = None
-            solution.append(self.cache[agent, nc])
-        return solution
+                    self.cache[agent, nc] = None, np.inf
+            path, cost = self.cache[agent, nc]
+            solution.append(path)
+            soc += cost
+        return solution, soc
 
     def compute_node_fitness(self, node):
         return sum_of_cost(node.solution, graph=self.g, weight="weight")
@@ -562,8 +567,7 @@ class CBS:
             return node
 
         if node.solution is None:
-            node.solution = self.compute_node_solution(node)
-            node.fitness = self.compute_node_fitness(node)
+            node.solution, node.fitness = self.compute_node_solution(node)
 
         if not solution_valid(node.solution):
             # if no valid solution exists, this node is final
@@ -602,11 +606,10 @@ class CBS:
             if constraints not in self.duplicate_cache:
                 self.duplicate_cache.add(constraints)
                 child = CBSNode(constraints=constraints)
-                child.solution = self.compute_node_solution(child)
+                child.solution, child.fitness = self.compute_node_solution(child)
                 # do not consider children without valid solution
                 if not solution_valid(child.solution):
                     continue
-                child.fitness = self.compute_node_fitness(child)
                 children.append(child)
             else:
                 self.duplicate_counter += 1
@@ -649,8 +652,8 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         logging.debug(constraints)
-        path = spacetime_astar(graph, start, goal,
-                               limit=limit, node_constraints=constraints)
+        path, _ = spacetime_astar(graph, start, goal,
+                                  limit=limit, node_constraints=constraints)
         solution.append(path)
     return solution
 
