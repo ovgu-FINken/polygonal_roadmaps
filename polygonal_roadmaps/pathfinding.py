@@ -418,7 +418,14 @@ def compute_normalized_weight(g, weight):
 
 
 class CBS:
-    def __init__(self, g, start_goal, weight=None, agent_constraints=None, limit=10, max_iter=10000, pad_paths=True, k_robustness=1):
+    def __init__(self,
+                 g,
+                 start_goal,
+                 weight=None,
+                 agent_constraints=None,
+                 limit=10, max_iter=10000,
+                 pad_paths=True,
+                 k_robustness=1):
         self.start_goal = start_goal
         for start, goal in start_goal:
             if start not in g.nodes() or goal not in g.nodes():
@@ -456,7 +463,8 @@ class CBS:
         self.best = None
         self.open = []
         self.evaluate_node(self.root)
-        self.repair_node_solution(self.root)
+        if self.best is None:
+            self.repair_node_solution(self.root)
         self.push(self.root)
 
     def push(self, node):
@@ -594,8 +602,8 @@ class CBS:
             return self.best
 
         # this is the best solution we found
-        logging.info(f"found new best at iteration {self.iteration_counter}, fitness: {self.best.fitness}")
         self.best = node
+        logging.info(f"found new best at iteration {self.iteration_counter}, fitness: {self.best.fitness}")
 
         # remove all the solution not as good as best from the open list
         self.open = [x for x in self.open if x.fitness < self.best.fitness]

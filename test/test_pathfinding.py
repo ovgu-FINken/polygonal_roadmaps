@@ -198,7 +198,7 @@ class TestCBS(unittest.TestCase):
         cbs = pathfinding.CBS(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
         try:
             cbs.run()
-        except pathfinding.PathDoesNotExistException:
+        except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(cbs.root.solution, [list('bcde'), list('gfba')])
         self.assertEqual(cbs.root.conflicts, frozenset())
