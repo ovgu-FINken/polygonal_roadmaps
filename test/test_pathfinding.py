@@ -215,3 +215,13 @@ class TestCBS(unittest.TestCase):
         self.assertFalse(exception_raised, msg="exception should not be raised, as path is valid")
         self.assertIn(best.solution, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
+
+        G = pathfinding.gen_example_graph(5, 3)
+        cbs = pathfinding.CBS(G, [('b', 'e'), ('e', 'a'), ('a', 'f')], limit=28)
+        exception_raised = False
+        try:
+            cbs.run()
+        except nx.NetworkXNoPath:
+            exception_raised = True
+
+        self.assertFalse(exception_raised, msg="exception should not be raised, as path is valid")

@@ -304,10 +304,16 @@ def spacetime_astar_calculate_return_path(nodes, explored, curnode, parent):
     return [nodes[n]['n'] for n in path]
 
 
+def solution_valid(solution: list) -> bool:
+    if solution is None or None in solution or [] in solution:
+        return False
+    if not len(solution):
+        return False
+    return True
+
+
 def sum_of_cost(paths, graph=None, weight=None):
-    if paths is None or None in paths or [] in paths:
-        return np.inf
-    if not len(paths):
+    if not solution_valid(paths):
         return np.inf
     if graph is None or weight is None:
         return sum([len(p) for p in paths])
@@ -330,6 +336,7 @@ class CBSNode:
         self.conflicts = None  # conflicts are found after plannig
         self.final = None
         self.solution = None
+        self.h = 0
         self.constraints = constraints  # constraints are used for planning
         if self.constraints is None:
             self.constraints = frozenset()
@@ -343,10 +350,14 @@ class CBSNode:
     def __str__(self):
         return f'{self.constraints}::[ {",".join([str(x) for x in self.children])} ]'
 
+    def heuristic(self):
+        if not self.children:
+            return self.fitness
+        return min(child.heuristic() for child in self.children)
+
     def tuple_repr(self):
         conflicts = len(self.conflicts) if self.conflicts else 0
-        constraints = len(self.constraints) if self.constraints else 0
-        return conflicts, self.fitness, constraints
+        return self.heuristic(), conflicts, self.fitness
 
     def __eq__(self, other):
         return self.tuple_repr() == other.tuple_repr()
@@ -492,7 +503,7 @@ class CBS:
         self.iteration_counter += 1
         node = self.pop()
         if self.iteration_counter % 100 == 0:
-            logging.info(f"{self.iteration_counter / 100}: f = {node.fitness}, conflicts = {len(node.conflicts)}")
+            logging.info(f"{self.iteration_counter / self.max_iter * 100}%: h = {node.heuristic()}, f = {node.fitness}, conflicts = {len(node.conflicts)}")
         for child in node.children:
             child = self.evaluate_node(child)
             child.open = False
@@ -506,8 +517,9 @@ class CBS:
         constraints = set(node.constraints)
         for agent in self.agents:
             solution = self.compute_node_solution(CBSNode(constraints), max_agents=agent + 1)
-            if solution is None or None in solution:
+            if not solution_valid(solution):
                 # unsuccessful
+                logging.debug("Repairing Solution is not successful")
                 return
             for t, n in enumerate(pad_path(solution[agent], limit=limit)):
                 # add constraints to the paths of all the following agents
@@ -515,8 +527,8 @@ class CBS:
                     constraints |= {NodeConstraint(agent=ti, time=t + k, node=n) for ti in self.agents[agent:]}
             logging.debug(f"prioritized plan: {agent}")
         fake_node = CBSNode(frozenset(constraints))
-        fake_node.solution = self.compute_node_solution(CBSNode(constraints))
-        fake_node.fitness = sum_of_cost(node.solution, graph=self.g, weight="weight")
+        fake_node.solution = self.compute_node_solution(fake_node)
+        fake_node.fitness = self.compute_node_fitness(fake_node)
         fake_node.final = True
         fake_node.valid = True
         if self.best is not None:
@@ -542,17 +554,25 @@ class CBS:
             solution.append(self.cache[agent, nc])
         return solution
 
+    def compute_node_fitness(self, node):
+        return sum_of_cost(node.solution, graph=self.g, weight="weight")
+
     def evaluate_node(self, node):
         if node.final:
             return node
-        node.solution = self.compute_node_solution(node)
-        node.fitness = sum_of_cost(node.solution, graph=self.g, weight="weight")
 
-        if node.fitness > len(self.agents) * self.limit * 10:
+        if node.solution is None:
+            node.solution = self.compute_node_solution(node)
+            node.fitness = self.compute_node_fitness(node)
+
+        if not solution_valid(node.solution):
             # if no valid solution exists, this node is final
             node.final = True
+            node.valid = False
             logging.debug("set node to final because of high fitness value")
             return node
+
+        assert(node.fitness != np.inf)
 
         if self.best is not None and node.fitness >= self.best.fitness:
             # if we add conflicts, the path only gets longer, hence this is not the optimal solution
@@ -580,15 +600,20 @@ class CBS:
                 continue
             constraints = frozenset(constraints | node.constraints)
             if constraints not in self.duplicate_cache:
-                children.append(CBSNode(constraints=constraints))
                 self.duplicate_cache.add(constraints)
+                child = CBSNode(constraints=constraints)
+                child.solution = self.compute_node_solution(child)
+                # do not consider children without valid solution
+                if not solution_valid(child.solution):
+                    continue
+                child.fitness = self.compute_node_fitness(child)
+                children.append(child)
             else:
                 self.duplicate_counter += 1
 
-        if len(children):
-            node.children = tuple(children)
+        node.children = tuple(children)
+        if len(node.children):
             return node
-
         logging.warn("no children added, node is not valid")
         logging.debug(f"{node.conflicts}, {node.constraints}")
         node.final = True
