@@ -123,12 +123,20 @@ class Conflict:
     conflicting_agents: frozenset
 
     def generate_constraints(self):
-        """ generate a set of constraints for each conflicting agent, which resolves the conflict"""
-        return self.conflicting_agents
+        """ generate a set of constraints for each conflicting agent, which resolves the conflict
+        i.e., one agent can stay, all others have to move to resolve the conflict
+        in a k=0 conflict, this means for each agent a set containing the other agents
+        in a k!=0 conflict this means either the agent at time t moves or all agents at t-k move
+        """
+        if self.k == 0:
+            return {self.conflicting_agents - {agent} for agent in self.conflicting_agents}
+        t_agent = max(self.conflicting_agents, key=lambda x: x.time)
+        return {frozenset(self.conflicting_agents - {t_agent}), frozenset({t_agent})}
 
 
-def compute_k_robustness_conflicts(paths, limit: int = None, k: int = 0):
-    node_occupancy = compute_node_occupancy(paths, limit=limit)
+def compute_k_robustness_conflicts(paths, limit: int = None, k: int = 0, node_occupancy: dict = None):
+    if node_occupancy is None:
+        node_occupancy = compute_node_occupancy(paths, limit=limit)
 
     conflicts = []
     for i, path in enumerate(paths):
@@ -164,7 +172,12 @@ def compute_all_k_conflicts(solution, limit: int = None, k=1):
     If there is no conflict the solution is valid
     Conflicts are used to generate constraints
     """
-    conflicts = [compute_k_robustness_conflicts(solution, limit=limit, k=ik) for ik in range(k + 1)]
+    node_occupancy = compute_node_occupancy(solution, limit=limit)
+    conflicts = [compute_k_robustness_conflicts(solution,
+                                                limit=limit,
+                                                k=ik,
+                                                node_occupancy=node_occupancy)
+                 for ik in range(k + 1)]
     return frozenset().union(*conflicts)
 
 
@@ -490,8 +503,8 @@ class CBS:
                 return
             for t, n in enumerate(pad_path(solution[agent], limit=limit)):
                 # add constraints to the paths of all the following agents
-                constraints |= {NodeConstraint(agent=ti, time=t, node=n) for ti in self.agents[agent:]}
-                constraints |= {NodeConstraint(agent=ti, time=t + 1, node=n) for ti in self.agents[agent:]}
+                for k in range(self.k_robustness + 1):
+                    constraints |= {NodeConstraint(agent=ti, time=t + k, node=n) for ti in self.agents[agent:]}
             logging.debug(f"prioritized plan: {agent}")
         fake_node = CBSNode(frozenset(constraints))
         fake_node.solution = self.compute_node_solution(CBSNode(constraints))
@@ -554,12 +567,12 @@ class CBS:
         # each conflict must be resolved in some way
         working_conflict = next(iter(node.conflicts))
         children = []
-        for constraint in working_conflict.generate_constraints():
-            if constraint in node.constraints:
+        for constraints in working_conflict.generate_constraints():
+            if node.constraints.issuperset(constraints):
                 continue
-            constraints = frozenset({constraint} | node.constraints)
+            constraints = frozenset(constraints | node.constraints)
             if constraints not in self.duplicate_cache:
-                children.append(CBSNode(constraints=frozenset({constraint} | node.constraints)))
+                children.append(CBSNode(constraints=constraints))
                 self.duplicate_cache.add(constraints)
             else:
                 self.duplicate_counter += 1
@@ -576,13 +589,17 @@ class CBS:
     def update_best(self, node):
         if not node.valid:
             return self.best
-        if self.best is None:
-            logging.info(f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}')
-            self.best = node
-        if node.fitness <= self.best.fitness:
-            logging.info(
-                f'Found new best solution at iteration {self.iteration_counter}. Fitness: {node.fitness}, best was: {self.best.fitness}')
-            self.best = node
+        # in case we already have a better solution, keep it
+        if self.best is not None and node.fitness >= self.best.fitness:
+            return self.best
+
+        # this is the best solution we found
+        logging.info(f"found new best at iteration {self.iteration_counter}, fitness: {self.best.fitness}")
+        self.best = node
+
+        # remove all the solution not as good as best from the open list
+        self.open = [x for x in self.open if x.fitness < self.best.fitness]
+        return node
 
 
 def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True):
