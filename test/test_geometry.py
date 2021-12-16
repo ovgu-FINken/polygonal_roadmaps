@@ -25,7 +25,6 @@ class TestGraphCreation(unittest.TestCase):
         self.assertEqual(free.geometryType(), 'MultiPolygon')
         self.assertFalse(free.buffer(-0.1).intersects(obstacles))
 
-    def testGenGraph(self):
         _, obstacles = geometry.read_obstacles(self.map_path)
         wx = (-1, 3.5)
         wy = (-3, 1.5)
@@ -34,6 +33,11 @@ class TestGraphCreation(unittest.TestCase):
         self.assertGreater(graph.number_of_nodes(), 10)
         self.assertGreater(graph.number_of_edges(), 10)
         self.assertEqual(nx.number_connected_components(graph), 4)
+
+        generators = geometry.hexagon_tiling(1.0, working_area_x=wx, working_area_y=wy)
+        graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles, offset=0.15)
+        self.assertGreater(graph.number_of_nodes(), 10)
+        self.assertGreater(graph.number_of_edges(), 10)
 
 
 class TestPathPolygon(unittest.TestCase):
@@ -44,7 +48,7 @@ class TestPathPolygon(unittest.TestCase):
         wy = (-3, 1.5)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
         self.graph = geometry.create_graph(generators, working_area_x=wx, working_area_y=wy, occupied_space=obstacles, offset=0.15)
-
+        self.obstacles = obstacles
     def testFindNearestNode(self):
         p1 = self.graph.nodes()[30]['geometry'].get_center_np()
         n1 = geometry.find_nearest_node(self.graph, p1)
