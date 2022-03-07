@@ -338,7 +338,6 @@ class CBSNode:
         self.conflicts = None  # conflicts are found after plannig
         self.final = None
         self.solution = None
-        self.h = 0
         self.constraints = constraints  # constraints are used for planning
         if self.constraints is None:
             self.constraints = frozenset()
@@ -504,8 +503,13 @@ class CBS:
         # return false if all nodes are already closed
         self.iteration_counter += 1
         node = self.pop()
-        if self.iteration_counter % 100 == 0:
-            logging.info(f"{self.iteration_counter / self.max_iter * 100}%: h = {node.heuristic()}, f = {node.fitness}, conflicts = {len(node.conflicts)}")
+        if self.iteration_counter % 500 == 0:
+            logging.info(f"""{self.iteration_counter / self.max_iter * 100}%:
+    h = {node.heuristic()},
+    f = {node.fitness},
+    cost = {len(self.cache)},
+    conflicts = {len(node.conflicts)},
+    nodes = {len(self.open)}""")
         for child in node.children:
             child = self.evaluate_node(child)
             child.open = False
@@ -578,7 +582,7 @@ class CBS:
 
         assert(node.fitness != np.inf)
 
-        if self.best is not None and node.fitness >= self.best.fitness:
+        if self.best is not None and node.heuristic() >= self.best.fitness:
             # if we add conflicts, the path only gets longer, hence this is not the optimal solution
             node.final = True
             logging.debug(f"set node to final because of best fitness value: {node.fitness} >= {self.best.fitness}")
@@ -594,10 +598,14 @@ class CBS:
             node.final = True
             self.update_best(node)
             return node
+        return self.expand_node(node)
 
+    def expand_node(self, node):
+        heuristic = self.compute_node_conflict_heurstic(node)
         # get one of the conflicts, to create constraints from
-        # each conflict must be resolved in some way
-        working_conflict = next(iter(node.conflicts))
+        # each conflict must be resolved in some way, so we pick the most expensive conflict first
+        # by picking the most expensive conflict, we generate less solutions with good fitness
+        working_conflict = sorted(node.conflicts, key=lambda x: heuristic[x], reverse=True)[0]
         children = []
         for constraints in working_conflict.generate_constraints():
             if node.constraints.issuperset(constraints):
@@ -634,8 +642,18 @@ class CBS:
         logging.info(f"found new best at iteration {self.iteration_counter}, fitness: {self.best.fitness}")
 
         # remove all the solution not as good as best from the open list
-        self.open = [x for x in self.open if x.fitness < self.best.fitness]
+        self.open = [x for x in self.open if x.heuristic() < self.best.fitness]
         return node
+
+    def compute_node_conflict_heurstic(self, node):
+        h = {}
+        for conflict in node.conflicts:
+            min_cost = np.inf
+            for constraints in conflict.generate_constraints():
+                _, cost = self.compute_node_solution(CBSNode(constraints=node.constraints | constraints))
+                min_cost = min(cost, min_cost)
+            h[conflict] = min_cost
+        return h
 
 
 def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True):

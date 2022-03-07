@@ -1,27 +1,61 @@
 from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
+import networkx as nx
 
 import numpy as np
 
 
-class PolygonalRoadmap:
-    def __init__(self, generators: np.array, map=None, x_min=0, x_max=1, y_min=0, y_max=1):
-        self.free, self.occupied = geometry.read_obstacles(map)
-        self.graph = geometry.create_graph(
-            generators,
-            working_area_x=(x_min, x_max),
-            working_area_y=(y_min, y_max),
-            occupied_space=self.occupied)
+class Environment():
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
+        self.g = graph
+        self.state = start
+        self.start = start
+        self.goal = goal
+
+    def get_graph(self) -> nx.Graph:
+        return self.g
+
+
+class GraphEnvironment(Environment):
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
+        super().__init__(graph, start, goal)
+    
+
+class RoadmapEnvironment(Environment):
+    def __init__(self, map, start_positions, goal_positions, grid):
+        pass
+
+
+class Planner():
+    def __init__(self, environment) -> None:
+        self.env = environment
+
+
+class Executor():
+    def __init__(self, environment: Environment, planner: Planner) -> None:
+        self.env = environment
+        self.planner = planner
+        
+    def run(self, update=False):
+        plan = self.planner.plan(self.env)
+        if not update:
+            return plan
+        elif self.env.state == self.env.goal:
+            return
+        else:
+            self.step(plan)
+            self.run(update=True)
+
+    def step(self):
+        # advance agents
+        pass
 
 
 def main():
-    roadmap = PolygonalRoadmap(
-        geometry.square_tiling(0.5, working_area_x=(-1, 3), working_area_y=(-1, 3)),
-        map='test/resources/icra_2021_map.yaml',
-        x_min=-1,
-        x_max=3,
-        y_min=-1,
-        y_max=3)
+    environment = Environment()
+    planner = Planner(environment)
+    executor = Executor(environment, planner)
+    print(executor)
 
 
 if __name__ == "__main__":
