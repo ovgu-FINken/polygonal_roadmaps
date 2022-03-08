@@ -1,10 +1,9 @@
-from attr import attributes
 from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
 import networkx as nx
 
 import numpy as np
-
+import pandas as pd
 
 class Environment():
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
@@ -19,6 +18,19 @@ class Environment():
 
 class GraphEnvironment(Environment):
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
+        super().__init__(graph, start, goal)
+
+
+class MapfInfoEnvironment(Environment):
+    def __init__(self, map_file, scenario_file, scenario_index=0, n_agents=None) -> None:
+        graph, start, goal = None, None, None
+        graph = pathfinding.read_movingai_map(map_file)
+        df = pd.read_csv(scenario_file, sep="\t", names=["id", "map", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
+        sg = df.loc[df.id.eq(scenario_index), "x0":"y1"].to_records(index=False)
+        if n_agents is None:
+            n_agents = len(sg)
+        start = ((x, y) for x, y, *_ in sg[:n_agents])
+        goal = ((x, y) for *_, x, y, in sg[:n_agents])
         super().__init__(graph, start, goal)
 
 

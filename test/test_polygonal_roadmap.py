@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -21,3 +22,10 @@ class TestGraphCreation(unittest.TestCase):
         self.assertListEqual(executor.history, [(1, 2)])
         executor.run(update=False)
         self.assertListEqual(executor.history, [(1, 2), (None, 1), (None, None)])
+
+    def testMapfInfoEnvironment(self):
+        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10.map"
+        scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
+        env = polygonal_roadmap.MapfInfoEnvironment(map_path, scen_path, n_agents=2)
+        self.assertIsInstance(env, polygonal_roadmap.Environment)
+
