@@ -32,7 +32,7 @@ class TestGraphCreation(unittest.TestCase):
     def testPlanningWithCBS(self):
         map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10.map"
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
-        env = polygonal_roadmap.MapfInfoEnvironment(map_path, scen_path, n_agents=2)
+        env = polygonal_roadmap.MapfInfoEnvironment(map_path, scen_path, n_agents=4)
         planner = polygonal_roadmap.CBSPlanner(env)
         executor = polygonal_roadmap.Executor(env, planner)
         executor.run(update=False)

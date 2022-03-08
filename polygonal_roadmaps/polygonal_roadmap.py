@@ -2,11 +2,11 @@ from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
 from itertools import zip_longest
 import networkx as nx
-import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
 
 class Environment():
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
@@ -32,8 +32,8 @@ class MapfInfoEnvironment(Environment):
         sg = df.loc[df.id.eq(scenario_index), "x0":"y1"].to_records(index=False)
         if n_agents is None:
             n_agents = len(sg)
-        start = ((x, y) for x, y, *_ in sg[:n_agents])
-        goal = ((x, y) for *_, x, y, in sg[:n_agents])
+        start = ((y, x) for x, y, *_ in sg[:n_agents])
+        goal = ((y, x) for *_, x, y, in sg[:n_agents])
         super().__init__(graph, start, goal)
 
 
