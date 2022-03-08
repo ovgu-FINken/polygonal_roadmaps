@@ -19,7 +19,7 @@ class Environment():
 class GraphEnvironment(Environment):
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
         super().__init__(graph, start, goal)
-    
+
 
 class RoadmapEnvironment(Environment):
     def __init__(self, map, start_positions, goal_positions, grid):

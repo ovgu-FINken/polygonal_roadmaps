@@ -93,6 +93,8 @@ def add_edges_to_graph(nodes, offset):
                             if p.touches(n1.inner) and p.touches(n2.inner):
                                 x = p
                         bp = x
+                if bp is None:
+                    continue
                 if bp.touches(n1.inner) and bp.touches(n2.inner):
                     edges.append(
                         (
