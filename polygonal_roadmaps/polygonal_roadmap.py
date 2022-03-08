@@ -1,6 +1,9 @@
 from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
+from itertools import zip_longest
 import networkx as nx
+import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -53,6 +56,18 @@ class FixedPlanner(Planner):
         return self._plan
 
 
+class CBSPlanner(Planner):
+    def __init__(self, environment, **kwargs) -> None:
+        super().__init__(environment)
+        sg = list(zip(self.env.state, self.env.goal))
+        self.cbs = pathfinding.CBS(self.env.g, sg, **kwargs)
+
+    def get_plan(self, *_):
+        self.cbs.run()
+        plans = list(self.cbs.best.solution)
+        return list(zip_longest(*plans)) + [(None for _ in plans)]
+
+
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 100) -> None:
         self.env = environment
@@ -90,11 +105,12 @@ class Executor():
 
 
 def main():
-    environment = Environment()
-    planner = Planner(environment)
-    executor = Executor(environment, planner)
-    executor.run()
-    print(executor.history[-1])
+    map_path = Path() / "test" / "resources" / "random-32-32-10.map"
+    scen_path = Path() / "test" / "resources" / "random-32-32-10-even-1.scen"
+    env = MapfInfoEnvironment(map_path, scen_path, n_agents=2)
+    planner = CBSPlanner(env)
+    executor = Executor(env, planner)
+    executor.run(update=False)
 
 
 if __name__ == "__main__":
