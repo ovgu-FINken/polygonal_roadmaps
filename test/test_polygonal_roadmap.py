@@ -9,7 +9,7 @@ import networkx as nx
 from polygonal_roadmaps import polygonal_roadmap
 
 
-class TestGraphCreation(unittest.TestCase):
+class TestPlanningExecution(unittest.TestCase):
     def testMinimalEnvironment(self):
         g = nx.from_edgelist([(1, 2), (2, 3), (1, 3), (1, 4)])
         env = polygonal_roadmap.GraphEnvironment(g, (1, 2), (2, 4))

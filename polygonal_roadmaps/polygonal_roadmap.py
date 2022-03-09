@@ -3,8 +3,8 @@ from polygonal_roadmaps import geometry
 from itertools import zip_longest
 import networkx as nx
 from pathlib import Path
+from cProfile import Profile
 
-import numpy as np
 import pandas as pd
 
 
@@ -39,7 +39,7 @@ class MapfInfoEnvironment(Environment):
 
 class RoadmapEnvironment(Environment):
     def __init__(self, map, start_positions, goal_positions, grid):
-        pass
+        self.g = geometry.create_graph(None)
 
 
 class Planner():
@@ -74,24 +74,24 @@ class Executor():
         self.planner = planner
         self.history = [self.env.state]
         self.time_frame = time_frame
+        self.profile = Profile()
 
     def run(self, update=False):
         if len(self.history) >= self.time_frame:
             return
+        self.profile.enable()
         plan = self.planner.get_plan(self.env)
         for _ in range(self.time_frame):
             self.step(plan)
             if all(s is None for s in self.env.state):
+                plan = plan[1:]
+                self.profile.disable()
                 return self.history
             if update:
                 plan = self.planner.get_plan(self.env)
             else:
                 plan = plan[1:]
-
-    def plan(self, update=False):
-        plan = self.planner.get_plan(self.env, self.env.state)
-        self.step(plan)
-        self.run(update=True)
+        self.profile.disable()
 
     def step(self, plan):
         # advance agents
