@@ -25,15 +25,15 @@ class GraphEnvironment(Environment):
 
 
 class MapfInfoEnvironment(Environment):
-    def __init__(self, map_file, scenario_file, scenario_index=0, n_agents=None) -> None:
+    def __init__(self, map_file, scenario_file, n_agents=None) -> None:
         graph, start, goal = None, None, None
         graph = pathfinding.read_movingai_map(map_file)
         df = pd.read_csv(scenario_file, sep="\t", names=["id", "map", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
-        sg = df.loc[df.id.eq(scenario_index), "x0":"y1"].to_records(index=False)
+        sg = df.loc[:, "x0":"y1"].to_records(index=False)
         if n_agents is None:
             n_agents = len(sg)
-        start = ((y, x) for x, y, *_ in sg[:n_agents])
-        goal = ((y, x) for *_, x, y, in sg[:n_agents])
+        start = [(x, y) for y, x, *_ in sg[:n_agents]]
+        goal = [(x, y) for *_, y, x, in sg[:n_agents]]
         super().__init__(graph, start, goal)
 
 
@@ -104,14 +104,19 @@ class Executor():
         return self.env.state
 
 
-def main():
-    map_path = Path() / "test" / "resources" / "random-32-32-10.map"
-    scen_path = Path() / "test" / "resources" / "random-32-32-10-even-1.scen"
-    env = MapfInfoEnvironment(map_path, scen_path, n_agents=2)
-    planner = CBSPlanner(env)
+def make_run(map_path=None, scen_path=None, n_agents=2):
+    if map_path is None:
+        map_path = Path() / "test" / "resources" / "random-32-32-10.map"
+    if scen_path is None:
+        scen_path = Path() / "test" / "resources" / "random-32-32-10-even-1.scen"
+    env = MapfInfoEnvironment(map_path, scen_path, n_agents=n_agents)
+    planner = CBSPlanner(env, limit=100)
     executor = Executor(env, planner)
     executor.run(update=False)
+    executor.profile.print_stats(sort=2)
+    print(f"steps in history: {len(executor.history)}")
+    return executor
 
 
 if __name__ == "__main__":
-    main()
+    make_run()
