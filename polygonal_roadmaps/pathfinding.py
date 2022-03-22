@@ -33,6 +33,11 @@ def gen_example_graph(a, b):
     return example
 
 
+def remove_if_exists(g, u, v):
+    if g.has_edge(u, v):
+        g.remove_edge(u, v)
+
+
 def read_movingai_map(path):
     # read a map given with the movingai-framework
     with open(path) as map_file:
@@ -57,6 +62,10 @@ def read_movingai_map(path):
         for j, pixel in enumerate(row[:-1]):
             if pixel in blocked:
                 graph.remove_node((i, j))
+                remove_if_exists(graph, (i + 1, j), (i, j + 1))
+                remove_if_exists(graph, (i - 1, j), (i, j + 1))
+                remove_if_exists(graph, (i + 1, j), (i, j - 1))
+                remove_if_exists(graph, (i - 1, j), (i, j - 1))
 
     for node in graph.nodes():
         graph.nodes()[node]["pos"] = node
@@ -94,7 +103,13 @@ def pred_to_list(g, pred, start, goal):
 def pad_path(path: list, limit: int = None) -> list:
     if limit is None:
         return path
-    return path + [path[-1] for _ in range(limit - len(path))]
+    if not len(path):
+        return []
+    if limit > len(path):
+        return path + [path[-1] for _ in range(limit - len(path))]
+    if limit < len(path):
+        return path[:limit]
+    return path
 
 
 def compute_node_conflicts(paths: list, limit: int = None) -> list:
@@ -306,7 +321,7 @@ def spacetime_astar_calculate_return_path(nodes, explored, curnode, parent):
 
 
 def solution_valid(solution: list) -> bool:
-    if solution is None or None in solution or [] in solution:
+    if solution is None or None in solution:
         return False
     if not len(solution):
         return False
@@ -438,7 +453,8 @@ class CBS:
                  agent_constraints=None,
                  limit=10, max_iter=10000,
                  pad_paths=True,
-                 k_robustness=1):
+                 k_robustness=1,
+                 discard_conflicts_beyond=None):
         self.start_goal = start_goal
         for start, goal in start_goal:
             if start not in g.nodes() or goal not in g.nodes():
@@ -447,7 +463,8 @@ class CBS:
         self.g = g
         compute_normalized_weight(self.g, weight)
         self.limit = limit
-        self.root = CBSNode(constraints=agent_constraints)
+        self.agent_constraints = agent_constraints
+        self.root = CBSNode(constraints=self.agent_constraints)
         self.cache = {}
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
         self.costs = {agent: {} for agent in self.agents}
@@ -457,6 +474,20 @@ class CBS:
         self.duplicate_cache = set()
         self.duplicate_counter = 0
         self.k_robustness = k_robustness
+        self.discard_conflcicts_beyond = discard_conflicts_beyond
+
+    def update_state(self, state):
+        assert len(state) == len(self.start_goal)
+        self.start_goal = [(s, g) if s is not None else (g, g) for s, (_, g) in zip(state, self.start_goal)]
+        for start, _ in self.start_goal:
+            if (start is not None) and (start not in self.g.nodes()):
+                raise nx.NodeNotFound()
+        self.root = CBSNode(constraints=self.agent_constraints)
+        self.cache = {}
+        self.best = None
+        self.iteration_counter = 0
+        self.duplicate_cache = set()
+        self.duplicate_counter = 0
 
     def heuristic(self, node, agent=None):
         if node not in self.costs[agent]:
@@ -521,6 +552,8 @@ class CBS:
     def repair_node_solution(self, node):
         # implementation: quick and dirty
         limit = self.limit if self.pad_paths else None
+        if self.discard_conflcicts_beyond is not None:
+            limit = self.discard_conflcicts_beyond
         constraints = set(node.constraints)
         for agent in self.agents:
             solution, _ = self.compute_node_solution(CBSNode(constraints), max_agents=agent + 1)
@@ -552,8 +585,10 @@ class CBS:
         for agent in self.agents[:max_agents]:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
             nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
-            if (agent, nc) not in self.cache:
-                sn, gn = self.start_goal[agent]
+            sn, gn = self.start_goal[agent]
+            if sn is None:
+                self.cache[agent, nc] = [], 0
+            elif (agent, nc) not in self.cache:
                 try:
                     self.cache[agent, nc] = spacetime_astar(
                         self.g, sn, gn, heuristic=partial(self.heuristic, agent=agent), node_constraints=nc, limit=self.limit)
@@ -591,6 +626,8 @@ class CBS:
             return node
 
         limit = self.limit if self.pad_paths else None
+        if self.discard_conflcicts_beyond is not None:
+            limit = self.discard_conflcicts_beyond
         node.conflicts = compute_all_k_conflicts(node.solution, limit=limit, k=self.k_robustness)
 
         if not len(node.conflicts):

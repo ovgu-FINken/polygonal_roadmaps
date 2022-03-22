@@ -2,8 +2,11 @@ from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
 from itertools import zip_longest
 import networkx as nx
+import numpy as np
 from pathlib import Path
 from cProfile import Profile
+
+import logging
 
 import pandas as pd
 
@@ -25,16 +28,28 @@ class GraphEnvironment(Environment):
 
 
 class MapfInfoEnvironment(Environment):
-    def __init__(self, map_file, scenario_file, n_agents=None) -> None:
+    def __init__(self, scenario_file, n_agents=None) -> None:
         graph, start, goal = None, None, None
-        graph = pathfinding.read_movingai_map(map_file)
-        df = pd.read_csv(scenario_file, sep="\t", names=["id", "map", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
+        df = pd.read_csv(scenario_file, sep="\t", names=["id", "map_name", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
+        self.width = df.w[0]
+        self.height = df.h[0]
+        self.map_file = Path() / "benchmark" / df.map_name[0]
+        graph = pathfinding.read_movingai_map(self.map_file)
+
         sg = df.loc[:, "x0":"y1"].to_records(index=False)
         if n_agents is None:
             n_agents = len(sg)
         start = [(x, y) for y, x, *_ in sg[:n_agents]]
         goal = [(x, y) for *_, y, x, in sg[:n_agents]]
         super().__init__(graph, start, goal)
+
+    def get_background_matrix(self):
+        positions = nx.get_node_attributes(self.g, 'pos').values()
+        positions = np.array(list(positions))
+        image = np.zeros((self.width, self.height))
+        for x, y in nx.get_node_attributes(self.g, 'pos').values():
+            image[x, y] = 1
+        return image.transpose()
 
 
 class RoadmapEnvironment(Environment):
@@ -43,8 +58,9 @@ class RoadmapEnvironment(Environment):
 
 
 class Planner():
-    def __init__(self, environment) -> None:
+    def __init__(self, environment, replan_required=False) -> None:
         self.env = environment
+        self.replan_required = replan_required
 
 
 class FixedPlanner(Planner):
@@ -57,15 +73,31 @@ class FixedPlanner(Planner):
 
 
 class CBSPlanner(Planner):
-    def __init__(self, environment, **kwargs) -> None:
-        super().__init__(environment)
-        sg = list(zip(self.env.state, self.env.goal))
-        self.cbs = pathfinding.CBS(self.env.g, sg, **kwargs)
+    def __init__(self, environment, horizon: int = None, **kwargs) -> None:
+        # initialize the planner.
+        # if the horizon is not None, we want to replan after execution of one step
+        super().__init__(environment, replan_required=(horizon is not None))
+        self.kwargs = kwargs
+        sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
+        self.cbs = pathfinding.CBS(self.env.g, sg, **self.kwargs)
 
     def get_plan(self, *_):
+        if self.replan_required:
+            self.cbs.update_state(self.env.state)
         self.cbs.run()
         plans = list(self.cbs.best.solution)
-        return list(zip_longest(*plans)) + [(None for _ in plans)]
+        # reintroduce plan for those states that have already finished -> i.e., where state is None
+        j = 0
+        ret = []
+        logging.info(f"state: {self.env.state}")
+        for i, s in enumerate(self.env.state):
+            if s is not None:
+                ret.append(plans[j] + [None])
+                j += 1
+            else:
+                ret.append([None])
+        ret = zip_longest(*ret, fillvalue=None)
+        return list(ret)
 
 
 class Executor():
@@ -76,25 +108,32 @@ class Executor():
         self.time_frame = time_frame
         self.profile = Profile()
 
-    def run(self, update=False):
+    def run(self, profiling=True):
         if len(self.history) >= self.time_frame:
             return
-        self.profile.enable()
+        if profiling:
+            self.profile.enable()
         plan = self.planner.get_plan(self.env)
-        for _ in range(self.time_frame):
+        for i in range(self.time_frame):
+            logging.info(f"At iteration {i} / {self.time_frame}")
             self.step(plan)
+            # (goal is reached)
             if all(s is None for s in self.env.state):
-                plan = plan[1:]
+                # plan = plan[1:]
                 self.profile.disable()
                 return self.history
-            if update:
+            if self.planner.replan_required:
+                # create new plan on updated state
                 plan = self.planner.get_plan(self.env)
             else:
                 plan = plan[1:]
-        self.profile.disable()
+        if profiling:
+            self.profile.disable()
+        logging.info("Planning complete")
 
     def step(self, plan):
         # advance agents
+        logging.info(f"plan: {plan}")
         state = list(plan[1])
         for i, s in enumerate(self.env.goal):
             if state[i] == s:
@@ -103,17 +142,23 @@ class Executor():
         self.history.append(self.env.state)
         return self.env.state
 
+    def get_history_as_dataframe(self):
+        records = []
+        for t, state in enumerate(self.history):
+            for agent, pos in enumerate(state):
+                if pos is None:
+                    continue
+                records.append({'agent': agent, 'x': pos[0], 'y': pos[1], 't': t})
+        return pd.DataFrame(records)
 
-def make_run(map_path=None, scen_path=None, n_agents=2):
-    if map_path is None:
-        map_path = Path() / "test" / "resources" / "random-32-32-10.map"
+
+def make_run(scen_path=None, n_agents=2, profiling=None):
     if scen_path is None:
-        scen_path = Path() / "test" / "resources" / "random-32-32-10-even-1.scen"
-    env = MapfInfoEnvironment(map_path, scen_path, n_agents=n_agents)
-    planner = CBSPlanner(env, limit=100)
+        scen_path = Path() / "benchmark" / "scen-even" / "maze-32-32-4-even-1.scen"
+    env = MapfInfoEnvironment(scen_path, n_agents=n_agents)
+    planner = CBSPlanner(env, limit=100, discard_conflicts_beyond=3, horizon=3)
     executor = Executor(env, planner)
-    executor.run(update=False)
-    executor.profile.print_stats(sort=2)
+    executor.run(profiling=profiling)
     print(f"steps in history: {len(executor.history)}")
     return executor
 
