@@ -23,8 +23,9 @@ class TestLowLevelSearch(unittest.TestCase):
         result = pathfinding.sum_of_cost([['b'], ['b', 'c']])
         self.assertEqual(result, 3)
 
+        # this is the behaviour of the algorithm, when one agent is at its goal already
         result = pathfinding.sum_of_cost([[], ['2', '3']])
-        self.assertEqual(result, np.inf)
+        self.assertEqual(result, 2)
 
         result = pathfinding.sum_of_cost(None)
         self.assertEqual(result, np.inf)

@@ -20,19 +20,17 @@ class TestPlanningExecution(unittest.TestCase):
 
         executor = polygonal_roadmap.Executor(env, planner)
         self.assertListEqual(executor.history, [(1, 2)])
-        executor.run(update=False)
+        executor.run()
         self.assertListEqual(executor.history, [(1, 2), (None, 1), (None, None)])
 
     def testMapfInfoEnvironment(self):
-        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10.map"
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
-        env = polygonal_roadmap.MapfInfoEnvironment(map_path, scen_path, n_agents=2)
+        env = polygonal_roadmap.MapfInfoEnvironment(scen_path, n_agents=2)
         self.assertIsInstance(env, polygonal_roadmap.Environment)
 
     def testPlanningWithCBS(self):
-        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10.map"
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
-        env = polygonal_roadmap.MapfInfoEnvironment(map_path, scen_path, n_agents=4)
+        env = polygonal_roadmap.MapfInfoEnvironment(scen_path, n_agents=4)
         planner = polygonal_roadmap.CBSPlanner(env)
         executor = polygonal_roadmap.Executor(env, planner)
-        executor.run(update=False)
+        executor.run()
