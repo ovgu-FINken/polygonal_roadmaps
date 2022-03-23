@@ -181,6 +181,15 @@ def compute_k_robustness_conflicts(paths, limit: int = None, k: int = 0, node_oc
     return set(conflicts)
 
 
+def compute_solution_robustness(solution, limit: int = None):
+    maximum = max([len(path) for path in solution])
+    for k in range(maximum):
+        conflits = compute_all_k_conflicts(solution, limit=limit, k=k)
+        if len(conflits):
+            return k - 1
+    return maximum
+
+
 def compute_all_k_conflicts(solution, limit: int = None, k=1):
     """compute the conflicts present in a solution
     Each conflict is a set of triples {(agent, time, node)

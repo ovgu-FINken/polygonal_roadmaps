@@ -151,6 +151,14 @@ class Executor():
                 records.append({'agent': agent, 'x': pos[0], 'y': pos[1], 't': t})
         return pd.DataFrame(records)
 
+    def get_history_as_solution(self):
+        solution = [[s] for s in self.history[0]]
+        for state in self.history[1:]:
+            for i, s in enumerate(state):
+                if s is not None:
+                    solution[i].append(s)
+        return solution
+
 
 def make_run(scen_path=None, n_agents=2, profiling=None):
     if scen_path is None:
