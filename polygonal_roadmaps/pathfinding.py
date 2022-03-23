@@ -33,9 +33,14 @@ def gen_example_graph(a, b):
     return example
 
 
-def remove_if_exists(g, u, v):
+def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
     if g.has_edge(u, v):
         g.remove_edge(u, v)
+
+
+def remove_node_if_exists(g: nx.Graph, v) -> None:
+    if g.has_node(v):
+        g.remove_node(v)
 
 
 def read_movingai_map(path):
@@ -61,11 +66,11 @@ def read_movingai_map(path):
     for i, row in enumerate(data):
         for j, pixel in enumerate(row[:-1]):
             if pixel in blocked:
-                graph.remove_node((i, j))
-                remove_if_exists(graph, (i + 1, j), (i, j + 1))
-                remove_if_exists(graph, (i - 1, j), (i, j + 1))
-                remove_if_exists(graph, (i + 1, j), (i, j - 1))
-                remove_if_exists(graph, (i - 1, j), (i, j - 1))
+                remove_node_if_exists(graph, (i, j))
+                remove_edge_if_exists(graph, (i + 1, j), (i, j + 1))
+                remove_edge_if_exists(graph, (i - 1, j), (i, j + 1))
+                remove_edge_if_exists(graph, (i + 1, j), (i, j - 1))
+                remove_edge_if_exists(graph, (i - 1, j), (i, j - 1))
 
     for node in graph.nodes():
         graph.nodes()[node]["pos"] = node

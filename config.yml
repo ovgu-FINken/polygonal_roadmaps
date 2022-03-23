@@ -1,0 +1,5 @@
+planner: CBS
+planner_args: {}
+env:
+  scen: benchmark/scen-even/brc202d-even-25.scen
+  n_agents: 10

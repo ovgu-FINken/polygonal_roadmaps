@@ -169,7 +169,3 @@ def make_run(scen_path=None, n_agents=2, profiling=None):
     executor.run(profiling=profiling)
     print(f"steps in history: {len(executor.history)}")
     return executor
-
-
-if __name__ == "__main__":
-    make_run()
