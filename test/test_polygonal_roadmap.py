@@ -34,3 +34,10 @@ class TestPlanningExecution(unittest.TestCase):
         planner = polygonal_roadmap.CBSPlanner(env)
         executor = polygonal_roadmap.Executor(env, planner)
         executor.run()
+
+    def testPlanningWithCBSHorizon(self):
+        scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
+        env = polygonal_roadmap.MapfInfoEnvironment(scen_path, n_agents=4)
+        planner = polygonal_roadmap.CBSPlanner(env, horizon=3, discard_conflicts_beyond=3)
+        executor = polygonal_roadmap.Executor(env, planner)
+        executor.run()
