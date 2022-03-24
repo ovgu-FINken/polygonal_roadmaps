@@ -1,0 +1,12 @@
+planner: CBS
+planner_args:
+  limit: 100
+  discard_conflicts_beyond: 3
+  horizon: 3
+env:
+  scen: 
+    - even/maze-32-32-4-even-1.scen
+    - even/maze-32-32-4-even-2.scen
+    - random/maze-32-32-4-random-1.scen
+    - random/maze-32-32-4-random-2.scen
+  n_agents: 10

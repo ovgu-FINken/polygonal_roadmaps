@@ -607,7 +607,7 @@ class CBS:
                     self.cache[agent, nc] = spacetime_astar(
                         self.g, sn, gn, heuristic=partial(self.heuristic, agent=agent), node_constraints=nc, limit=self.limit)
                 except nx.NetworkXNoPath:
-                    logger.warn("No path for agent")
+                    logger.warning("No path for agent")
                     self.cache[agent, nc] = None, np.inf
             path, cost = self.cache[agent, nc]
             solution.append(path)

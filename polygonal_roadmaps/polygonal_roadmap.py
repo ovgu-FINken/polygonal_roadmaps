@@ -47,7 +47,7 @@ def create_df_from_profile(profile):
     df['line'] = df["filename:lineno(function)"].apply(extract_line)
     df['function'] = df["filename:lineno(function)"].apply(extract_function)
     return df
-    
+
 
 class Environment():
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
@@ -68,10 +68,11 @@ class GraphEnvironment(Environment):
 class MapfInfoEnvironment(Environment):
     def __init__(self, scenario_file, n_agents=None) -> None:
         graph, start, goal = None, None, None
-        df = pd.read_csv(scenario_file, sep="\t", names=["id", "map_name", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
+        df = pd.read_csv(Path("benchmark") / "scen" / scenario_file, sep="\t", names=["id", "map_name", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
         self.width = df.w[0]
         self.height = df.h[0]
-        self.map_file = Path() / "benchmark" / df.map_name[0]
+        self.map_file = Path() / "benchmark" / "maps" / df.map_name[0]
+        self.scenario_file = scenario_file
         graph = pathfinding.read_movingai_map(self.map_file)
 
         sg = df.loc[:, "x0":"y1"].to_records(index=False)
