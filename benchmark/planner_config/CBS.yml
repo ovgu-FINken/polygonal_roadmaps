@@ -1,0 +1,3 @@
+planner: CBS
+planner_args:
+  limit: 100

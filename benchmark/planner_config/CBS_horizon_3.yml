@@ -1,0 +1,5 @@
+planner: CBS
+planner_args:
+  limit: 100
+  discard_conflicts_beyond: 3
+  horizon: 3
