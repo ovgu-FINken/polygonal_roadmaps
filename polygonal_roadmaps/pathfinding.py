@@ -212,9 +212,9 @@ def compute_all_k_conflicts(solution, limit: int = None, k=1):
 
 
 def spatial_astar(G, source, target, weight=None):
-    def heuristic(u, v):
+    def spatial_heuristic(u, v):
         return np.linalg.norm(np.array(G.nodes()[u]['pos']) - np.array(G.nodes()[v]['pos']))
-    return nx.astar_path(G, source=source, target=target, heuristic=heuristic, weight=weight)
+    return nx.astar_path(G, source=source, target=target, heuristic=spatial_heuristic, weight=weight)
 
 
 def compute_cost(G, target, weight=None):
@@ -229,7 +229,7 @@ def temporal_node_list(G, limit, node_constraints):
     return nodelist
 
 
-def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constraints=None):
+def spacetime_astar(G, source, target, spacetime_heuristic=None, limit=100, node_constraints=None):
     # we search the path one time with normal A*, so we know that all nodes exist and are connected
     if not node_constraints:
         spatial_path = spatial_astar(G, source, target)
@@ -237,10 +237,10 @@ def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constrain
             raise nx.NetworkXNoPath()
         return spatial_path, sum_of_cost([spatial_path], graph=G, weight="weight")
 
-    def default_heuristic(u):
+    def true_cost_heuristic(u):
         return nx.shortest_path_length(G, source=u, target=target, weight="weight")
-    if heuristic is None:
-        heuristic = default_heuristic
+    if spacetime_heuristic is None:
+        spacetime_heuristic = true_cost_heuristic
 
     push = heappush
     pop = heappop
@@ -298,7 +298,7 @@ def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constrain
                 if qcost <= ncost:
                     continue
             else:
-                h = heuristic(neighbor)
+                h = spacetime_heuristic(neighbor)
             nodes[t_neighbor] = {'n': neighbor, 't': t}
             enqueued[t_neighbor] = ncost, h
             push(queue, (ncost + h, next(c), t_neighbor, ncost, curnode))
@@ -317,7 +317,7 @@ def spacetime_astar(G, source, target, heuristic=None, limit=100, node_constrain
                 if qcost <= ncost:
                     continue
             else:
-                h = heuristic(neighbor)
+                h = spacetime_heuristic(neighbor)
             nodes[t_neighbor] = {'n': neighbor, 't': t}
             enqueued[t_neighbor] = ncost, h
             push(queue, (ncost + h, next(c), t_neighbor, ncost, curnode))
@@ -503,7 +503,7 @@ class CBS:
         self.duplicate_cache = set()
         self.duplicate_counter = 0
 
-    def heuristic(self, node, agent=None):
+    def cbs_heurstic(self, node, agent=None):
         if node not in self.costs[agent]:
             _, goal = self.start_goal[agent]
             self.costs[agent][goal] = 0
@@ -605,7 +605,7 @@ class CBS:
             elif (agent, nc) not in self.cache:
                 try:
                     self.cache[agent, nc] = spacetime_astar(
-                        self.g, sn, gn, heuristic=partial(self.heuristic, agent=agent), node_constraints=nc, limit=self.limit)
+                        self.g, sn, gn, spacetime_heuristic=partial(self.cbs_heurstic, agent=agent), node_constraints=nc, limit=self.limit)
                 except nx.NetworkXNoPath:
                     logger.warning("No path for agent")
                     self.cache[agent, nc] = None, np.inf
@@ -654,11 +654,11 @@ class CBS:
         return self.expand_node(node)
 
     def expand_node(self, node):
-        heuristic = self.compute_node_conflict_heurstic(node)
+        node_expansion_heuristic = self.compute_node_conflict_heurstic(node)
         # get one of the conflicts, to create constraints from
         # each conflict must be resolved in some way, so we pick the most expensive conflict first
         # by picking the most expensive conflict, we generate less solutions with good fitness
-        working_conflict = sorted(node.conflicts, key=lambda x: heuristic[x], reverse=True)[0]
+        working_conflict = sorted(node.conflicts, key=lambda x: node_expansion_heuristic[x], reverse=True)[0]
         children = []
         for constraints in working_conflict.generate_constraints():
             if node.constraints.issuperset(constraints):
