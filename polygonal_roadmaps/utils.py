@@ -36,6 +36,8 @@ def load_results(planner_config, scen_config):
         env = polygonal_roadmap.MapfInfoEnvironment(scen)
         df['map'] = env.map_file
         df['config'] = pkl.config
+        df['planner'] = planner_config
+        df['scen'] = scen_config
         profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(expand_node)', '(step)'])])
     profile_df = pd.concat(profile_data, ignore_index=True)
     return pkls, profile_df
