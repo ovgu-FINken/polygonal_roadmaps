@@ -682,7 +682,7 @@ class CBS:
         node.children = tuple(children)
         if len(node.children):
             return node
-        logging.warn("no children added, node is not valid")
+        logging.info("no children added, node is not valid")
         logging.debug(f"{node.conflicts}, {node.constraints}")
         node.final = True
         return node
