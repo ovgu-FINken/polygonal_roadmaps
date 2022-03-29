@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-import pstats
-import io
 from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
+from polygonal_roadmaps import utils
 from itertools import zip_longest
 import networkx as nx
 import numpy as np
@@ -12,41 +11,6 @@ from cProfile import Profile
 import logging
 
 import pandas as pd
-
-
-def create_df_from_profile(profile):
-    # see https://qxf2.com/blog/saving-cprofile-stats-to-a-csv-file/
-    strio = io.StringIO()
-    ps = pstats.Stats(profile, stream=strio)
-    ps.print_stats(1.0)
-
-    result = strio.getvalue()
-    result = 'ncalls' + result.split('ncalls')[-1]
-    result = '\n'.join([','.join(line.rstrip().split(None, 5)) for line in result.split('\n')])
-
-    csv = io.StringIO(result)
-    df = pd.read_csv(csv)
-
-    def flf(s):
-        if s[0] == '{':
-            return ('{buildins}', pd.NA, s)
-        else:
-            parts = s.split(':')
-            return (':'.join(parts[:-1]), parts[-1].split('(')[0], '(' + '('.join(parts[-1].split('(')[1:]))
-
-    def extract_file(s):
-        return flf(s)[0]
-
-    def extract_line(s):
-        return flf(s)[1]
-
-    def extract_function(s):
-        return flf(s)[2]
-
-    df['file'] = df["filename:lineno(function)"].apply(extract_file)
-    df['line'] = df["filename:lineno(function)"].apply(extract_line)
-    df['function'] = df["filename:lineno(function)"].apply(extract_function)
-    return df
 
 
 class Environment():
@@ -68,7 +32,10 @@ class GraphEnvironment(Environment):
 class MapfInfoEnvironment(Environment):
     def __init__(self, scenario_file, n_agents=None) -> None:
         graph, start, goal = None, None, None
-        df = pd.read_csv(Path("benchmark") / "scen" / scenario_file, sep="\t", names=["id", "map_name", "w", "h", "x0", "y0", "x1", "y1", "cost"], skiprows=1)
+        df = pd.read_csv(Path("benchmark") / "scen" / scenario_file,
+                         sep="\t",
+                         names=["id", "map_name", "w", "h", "x0", "y0", "x1", "y1", "cost"],
+                         skiprows=1)
         self.width = df.w[0]
         self.height = df.h[0]
         self.map_file = Path() / "benchmark" / "maps" / df.map_name[0]
@@ -88,7 +55,20 @@ class MapfInfoEnvironment(Environment):
         image = np.zeros((self.width, self.height))
         for x, y in nx.get_node_attributes(self.g, 'pos').values():
             image[x, y] = 1
-        return image.transpose()
+        return image
+
+    def get_obstacle_df(self):
+        m = self.get_background_matrix()
+        data = []
+        for x in range(m.shape[0]):
+            for y in range(m.shape[1]):
+                if m[x, y] == 0:
+                    data.append({'x': x, 'y': y, 'status': 'free'})
+                else:
+                    data.append({'x': x, 'y': y, 'status': 'occupied'})
+        df = pd.DataFrame(data)
+        df['status'] = df['status'].astype('category')
+        return df
 
 
 class RoadmapEnvironment(Environment):
@@ -139,16 +119,6 @@ class CBSPlanner(Planner):
         return list(ret)
 
 
-def convert_history_to_df(history):
-    records = []
-    for t, state in enumerate(history):
-        for agent, pos in enumerate(state):
-            if pos is None:
-                continue
-            records.append({'agent': agent, 'x': pos[0], 'y': pos[1], 't': t})
-    return pd.DataFrame(records)
-
-
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 100) -> None:
         self.env = environment
@@ -192,7 +162,7 @@ class Executor():
         return self.env.state
 
     def get_history_as_dataframe(self):
-        return convert_history_to_df(self.history)
+        return utils.convert_history_to_df(self.history)
 
     def get_history_as_solution(self):
         solution = [[s] for s in self.history[0]]
@@ -205,7 +175,7 @@ class Executor():
     def get_result(self):
         return RunResult(
             self.history,
-            create_df_from_profile(self.profile),
+            utils.create_df_from_profile(self.profile),
             {}
         )
 

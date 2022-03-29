@@ -12,7 +12,7 @@ from .polygonal_roadmap import pathfinding
 def run_all(args):
     for planner in args.planner:
         for scenario in args.scen:
-            run_scenarios(scenario, planner)
+            run_scenarios(scenario, planner, n_agents=args.n_agents)
 
 
 def create_planner_from_config(config, env):
@@ -21,31 +21,40 @@ def create_planner_from_config(config, env):
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenarios(scenario_yml, planner_yml):
+def run_scenarios(scenario_yml, planner_yml, n_agents=None):
     with open(Path("benchmark") / 'planner_config' / planner_yml) as stream:
         planner_config = yaml.safe_load(stream)
     with open(Path("benchmark") / 'scenario_config' / scenario_yml) as stream:
         scenario_config = yaml.safe_load(stream)
+        if n_agents is not None:
+            scenario_config['n_agents'] = n_agents
     for scen in scenario_config['scen']:
         env = MapfInfoEnvironment(scen, n_agents=scenario_config['n_agents'])
 
         planner = create_planner_from_config(planner_config, env)
-        path = Path('results') / planner_yml / scenario_yml
+        path = Path('results') / planner_yml / scenario_yml / scen
         path.mkdir(parents=True, exist_ok=True)
-        run_one(planner, result_path=path / 'result.pkl')
+        config = planner_config.update({'map': env.map_file, 'scen': scen})
+        run_one(planner, result_path=path / 'result.pkl', config=config)
 
 
-def run_one(planner, result_path=None):
+def run_one(planner, result_path=None, config=None):
     ex = Executor(planner.env, planner)
+    print('-----------------')
+    if result_path is not None:
+        print(f'{result_path}')
     ex.run()
     print(f'n_agents={len(ex.history[0])}')
     print(f'took {len(ex.history)} steps to completion')
     print(f'k-robustness with k={pathfinding.compute_solution_robustness(ex.get_history_as_solution())}')
+    print('-----------------')
 
+    data = ex.get_result()
+    data.config = config
     logging.info('done')
     if result_path is not None:
         with open(result_path, mode="wb") as results:
-            pickle.dump(ex.get_result(), results)
+            pickle.dump(data, results)
 
 
 if __name__ == "__main__":

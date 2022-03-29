@@ -229,7 +229,7 @@ def temporal_node_list(G, limit, node_constraints):
     return nodelist
 
 
-def spacetime_astar(G, source, target, spacetime_heuristic=None, limit=100, node_constraints=None):
+def spacetime_astar(G, source, target, spacetime_heuristic=None, limit=100, node_constraints=None, wait_action_cost=1.0001):
     # we search the path one time with normal A*, so we know that all nodes exist and are connected
     if not node_constraints:
         spatial_path = spatial_astar(G, source, target)
@@ -306,7 +306,7 @@ def spacetime_astar(G, source, target, spacetime_heuristic=None, limit=100, node
         if (node, t) not in node_constraints:
             neighbor = node
 
-            ncost = dist + 1.0001
+            ncost = dist + wait_action_cost
             t_neighbor = f'n{neighbor}t{t}'
             if t_neighbor in enqueued:
                 qcost, h = enqueued[t_neighbor]
@@ -536,9 +536,13 @@ class CBS:
 
     def run(self):
         self.setup()
+        found = False
         for _ in range(self.max_iter):
             if not self.step():
+                found = True
                 break
+        if not found:
+            logging.warning(f'max iter of {self.max_iter} is reached.')
         if self.best is None:
             raise nx.NetworkXNoPath()
         return self.best
