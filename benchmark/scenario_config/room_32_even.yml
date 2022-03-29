@@ -1,0 +1,13 @@
+scen:
+  - room-32-32-4-even-1.scen
+  - room-32-32-4-even-2.scen
+  - room-32-32-4-even-3.scen
+  - room-32-32-4-even-4.scen
+  - room-32-32-4-even-5.scen
+  - room-32-32-4-even-6.scen
+  - room-32-32-4-even-7.scen
+  - room-32-32-4-even-8.scen
+  - room-32-32-4-even-9.scen
+  - room-32-32-4-even-10.scen
+  - room-32-32-4-even-11.scen
+n_agents: 10
