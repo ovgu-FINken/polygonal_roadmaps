@@ -31,7 +31,7 @@ def run_scenarios(scenario_yml, planner_yml, n_agents=None, index=None):
     if index is None:
         scenarios = [scen for scen in scenario_config['scen']]
     else:
-        scenarios = [scenario_config[index]]
+        scenarios = [scenario_config['scen'][index]]
     for scen in scenarios:
         env = MapfInfoEnvironment(scen, n_agents=scenario_config['n_agents'])
 
