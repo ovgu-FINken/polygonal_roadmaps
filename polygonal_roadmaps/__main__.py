@@ -12,7 +12,7 @@ from .polygonal_roadmap import pathfinding
 def run_all(args):
     for planner in args.planner:
         for scenario in args.scen:
-            run_scenarios(scenario, planner, n_agents=args.n_agents)
+            run_scenarios(scenario, planner, n_agents=args.n_agents, index=args.index)
 
 
 def create_planner_from_config(config, env):
@@ -21,14 +21,18 @@ def create_planner_from_config(config, env):
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenarios(scenario_yml, planner_yml, n_agents=None):
+def run_scenarios(scenario_yml, planner_yml, n_agents=None, index=None):
     with open(Path("benchmark") / 'planner_config' / planner_yml) as stream:
         planner_config = yaml.safe_load(stream)
     with open(Path("benchmark") / 'scenario_config' / scenario_yml) as stream:
         scenario_config = yaml.safe_load(stream)
         if n_agents is not None:
             scenario_config['n_agents'] = n_agents
-    for scen in scenario_config['scen']:
+    if index is None:
+        scenarios = [scen for scen in scenario_config['scen']]
+    else:
+        scenarios = [scenario_config[index]]
+    for scen in scenarios:
         env = MapfInfoEnvironment(scen, n_agents=scenario_config['n_agents'])
 
         planner = create_planner_from_config(planner_config, env)
@@ -62,5 +66,6 @@ if __name__ == "__main__":
     parser.add_argument("-planner", type=str, nargs='+', required=True)
     parser.add_argument("-scen", type=str, nargs='+', required=True)
     parser.add_argument("-n_agents", type=int, default=None)
+    parser.add_argument("-index", type=int, default=None)
     args = parser.parse_args()
     run_all(args)
