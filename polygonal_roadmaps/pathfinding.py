@@ -459,6 +459,55 @@ def compute_normalized_weight(g, weight):
             g.edges()[n1, n2]['weight'] = 1.0001
 
 
+class SpaceTimeAStarCache:
+    """ Cache for paths (with constraints) and the heurstic precomputed by spatial A-star """
+    def __init__(self, graph, costs=None, kwargs=None):
+        self.kwargs = kwargs
+        self.costs = {}
+        self.cache = {}
+        self.graph = graph
+
+    def cbs_heurstic(self, node, goal=None):
+        if goal not in self.costs:
+            self.costs[goal] = {goal: 0}
+        if node not in self.costs[goal]:
+            path = spatial_astar(self.graph, goal, node, weight="weight")
+            assert(path[-1] == node)
+            cost = 0
+            for n1, n2 in zip(path[:-1], path[1:]):
+                cost += self.graph.edges()[n1, n2]["weight"]
+                if n2 not in self.costs[goal]:
+                    self.costs[goal][n2] = cost
+        return self.costs[goal][node]
+
+    def reset(self, state_only=False):
+        """"reset the cache
+        if state_only=True is passed, the cost to the goals is not reset.
+        """
+        self.costs = {}
+        if not state_only:
+            self.cache = {}
+
+    def get_path(self, start, goal, node_constraints):
+        """try to look up a path from start to goal in the cache with specific contstraints
+        if the path was searched before, we will return the path without new computation
+        """
+        if (start, goal, node_constraints) in self.cache:
+            return self.cache[start, goal, node_constraints]
+        try:
+            self.cache[start, goal, node_constraints] = spacetime_astar(
+                self.graph,
+                start,
+                goal,
+                spacetime_heuristic=partial(self.cbs_heurstic, goal=goal),
+                node_constraints=node_constraints,
+                **self.kwargs)
+        except nx.NetworkXNoPath:
+            logger.warning("No path for agent")
+            self.cache[start, goal, node_constraints] = None, np.inf
+        return self.cache[start, goal, node_constraints]
+
+
 class CBS:
     def __init__(self,
                  g,
@@ -468,6 +517,7 @@ class CBS:
                  limit=10, max_iter=10000,
                  pad_paths=True,
                  k_robustness=1,
+                 wait_action_cost=1.0001,
                  discard_conflicts_beyond=None):
         self.start_goal = start_goal
         for start, goal in start_goal:
@@ -479,9 +529,7 @@ class CBS:
         self.limit = limit
         self.agent_constraints = agent_constraints
         self.root = CBSNode(constraints=self.agent_constraints)
-        self.cache = {}
         self.agents = tuple([i for i, _ in enumerate(start_goal)])
-        self.costs = {agent: {} for agent in self.agents}
         self.best = None
         self.max_iter = max_iter
         self.iteration_counter = 0
@@ -489,35 +537,26 @@ class CBS:
         self.duplicate_counter = 0
         self.k_robustness = k_robustness
         self.discard_conflcicts_beyond = discard_conflicts_beyond
+        spacetime_kwargs = {
+            'wait_action_cost': wait_action_cost,
+            'limit': limit,
+        }
+        self.cache = SpaceTimeAStarCache(self.g, [g for _, g in (self.start_goal)], kwargs=spacetime_kwargs)
 
     def update_state(self, state):
+        self.cache.reset(state_only=True)
         assert len(state) == len(self.start_goal)
         self.start_goal = [(s, g) if s is not None else (g, g) for s, (_, g) in zip(state, self.start_goal)]
         for start, _ in self.start_goal:
             if (start is not None) and (start not in self.g.nodes()):
                 raise nx.NodeNotFound()
         self.root = CBSNode(constraints=self.agent_constraints)
-        self.cache = {}
         self.best = None
         self.iteration_counter = 0
         self.duplicate_cache = set()
         self.duplicate_counter = 0
 
-    def cbs_heurstic(self, node, agent=None):
-        if node not in self.costs[agent]:
-            _, goal = self.start_goal[agent]
-            self.costs[agent][goal] = 0
-            path = spatial_astar(self.g, goal, node, weight="weight")
-            assert(path[-1] == node)
-            cost = 0
-            for n1, n2 in zip(path[:-1], path[1:]):
-                cost += self.g.edges()[n1, n2]["weight"]
-                if n2 not in self.costs[agent]:
-                    self.costs[agent][n2] = cost
-        return self.costs[agent][node]
-
     def setup(self):
-        self.cache = {}
         self.best = None
         self.open = []
         self.evaluate_node(self.root)
@@ -557,7 +596,7 @@ class CBS:
             logging.info(f"""{self.iteration_counter / self.max_iter * 100}%:
     h = {node.heuristic()},
     f = {node.fitness},
-    cost = {len(self.cache)},
+    cost = {len(self.cache.cache)},
     conflicts = {len(node.conflicts)},
     nodes = {len(self.open)}""")
         for child in node.children:
@@ -605,15 +644,9 @@ class CBS:
             nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
             sn, gn = self.start_goal[agent]
             if sn is None:
-                self.cache[agent, nc] = [], 0
-            elif (agent, nc) not in self.cache:
-                try:
-                    self.cache[agent, nc] = spacetime_astar(
-                        self.g, sn, gn, spacetime_heuristic=partial(self.cbs_heurstic, agent=agent), node_constraints=nc, limit=self.limit)
-                except nx.NetworkXNoPath:
-                    logger.warning("No path for agent")
-                    self.cache[agent, nc] = None, np.inf
-            path, cost = self.cache[agent, nc]
+                path, cost = [], 0
+            else:
+                path, cost = self.cache.get_path(sn, gn, node_constraints=nc)
             solution.append(path)
             soc += cost
         return solution, soc
@@ -731,6 +764,31 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
                                   limit=limit, node_constraints=constraints)
         solution.append(path)
     return solution
+
+
+class CDM_CR:
+    def __init__(self, g, start, goal, limit=10):
+        assert len(start) == len(goal)
+        self.g = g
+        self.start = start
+        self.goal = goal
+        self.priority_map = nx.DiGraph()
+        self.priority_map.add_nodes_from(self.g.nodes())
+
+    def run(self):
+        # find conflicts
+        conflicts = self.find_conflicts()
+        while conflicts:
+            self.resolve_single_conflict(conflicts)
+
+    def resolve_single_conflict(self, conflict):
+        # compute priorities for decisions
+
+        # compute decsion quality for the options, for the involved agents
+
+        # make the decision
+
+        return None
 
 
 if __name__ == "__main__":
