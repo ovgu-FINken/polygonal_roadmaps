@@ -767,28 +767,82 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
 
 
 class CDM_CR:
-    def __init__(self, g, start, goal, limit=10):
-        assert len(start) == len(goal)
+    def __init__(self, g, starts, goals, limit=10, wait_action_cost=1.0001, weight=None, k_robustness=1, pad_paths=False, discard_conflicts_beyond=None):
+        self.discard_conflicts_beyond = discard_conflicts_beyond
+        assert len(starts) == len(goals)
         self.g = g
-        self.start = start
-        self.goal = goal
+        compute_normalized_weight(self.g, weight)
+        self.starts = starts
+        self.goals = goals
+        self.agents = tuple(i for i, _ in enumerate(goals))
         self.priority_map = nx.DiGraph()
         self.priority_map.add_nodes_from(self.g.nodes())
+        self.limit = limit
+        self.k_robustness = k_robustness
+        self.pad_paths = pad_paths
+        astar_kwargs = {
+            'limit': limit,
+            'wait_action_cost': wait_action_cost
+        }
+        self.cache = SpaceTimeAStarCache(self.g, kwargs=astar_kwargs)
+        self.constraints = [[] for _ in self.agents]
 
     def run(self):
-        # find conflicts
-        conflicts = self.find_conflicts()
+        conflicts = [None]
+        # [None] is a placeholder to enter the loop initially
         while conflicts:
-            self.resolve_single_conflict(conflicts)
+            # plan paths, based on current constraints
+            solution = []
+            costs = 0
+            for start, goal, constraints in zip(self.starts, self.goals, self.constraints):
+                path, cost = self.cache.get_path(start, goal, frozenset(constraints))
+                costs += cost
+                solution.append(path)
 
-    def resolve_single_conflict(self, conflict):
+            # find conflicts
+            conflicts = self.find_conflicts(solution)
+            if not conflicts:
+                return solution
+            self.resolve_first_conflict(conflicts)
+            # go back to replanning (restart while)
+            return solution
+
+    def find_conflicts(self, solution):
+        if not solution_valid(solution):
+            raise nx.NetworkXNoPath()
+        limit = self.limit if self.pad_paths else None
+        if self.discard_conflicts_beyond is not None:
+            limit = self.discard_conflicts_beyond
+        conflicts = compute_all_k_conflicts(solution, limit=limit, k=self.k_robustness)
+        return conflicts
+
+    def resolve_first_conflict(self, conflicts):
+        logging.info(f"conflicts: {conflicts}")
+        priorities = {}
         # compute priorities for decisions
+        for conflict in conflicts:
+            for x in conflict.conflicting_agents:
+                if x.node not in priorities:
+                    priorities[x.node] = 0
+                priorities[x.node] += x.time
+        # priorities now holds all nodes with conflicts as key, agent_i * time_i as value
+        logging.info(f'priorities: {priorities}')
+        highest_priority_node = max(priorities, key=priorities.get)
+        logging.info(f'chosen: {highest_priority_node}')
+        options = [(neighbor, highest_priority_node) for neighbor in self.g[highest_priority_node]]
+        logging.info(f'options for priority edges: {options}')
 
         # compute decsion quality for the options, for the involved agents
 
         # make the decision
 
+        # create constraints from priority map
         return None
+
+    def update_state(self, state):
+        self.start = state
+        self.cache.reset(state_only=True)
+        # TODO: We may need to update/fix the priority map.
 
 
 if __name__ == "__main__":

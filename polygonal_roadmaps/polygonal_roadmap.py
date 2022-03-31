@@ -119,6 +119,32 @@ class CBSPlanner(Planner):
         return list(ret)
 
 
+class CCRPlanner(Planner):
+    def __init__(self, environment, horizon: int = None, **kwargs) -> None:
+        # initialize the planner.
+        # if the horizon is not None, we want to replan after execution of one step
+        super().__init__(environment, replan_required=(horizon is not None))
+        self.kwargs = kwargs
+        self.ccr = pathfinding.CDM_CR(self.env.g, self.env.state, self.env.goal, **kwargs)
+
+    def get_plan(self, *_):
+        if self.replan_required:
+            self.ccr.update_state(self.env.state)
+        plans = self.ccr.run()
+        # reintroduce plan for those states that have already finished -> i.e., where state is None
+        print(plans)
+        j = 0
+        ret = []
+        for i, s in enumerate(self.env.state):
+            if s is not None:
+                ret.append(plans[j] + [None])
+                j += 1
+            else:
+                ret.append([None])
+        ret = zip_longest(*ret, fillvalue=None)
+        return list(ret)
+
+
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 100) -> None:
         self.env = environment
