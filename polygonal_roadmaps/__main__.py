@@ -5,7 +5,7 @@ import pickle
 
 from pathlib import Path
 
-from .polygonal_roadmap import CBSPlanner, Executor, MapfInfoEnvironment
+from .polygonal_roadmap import CBSPlanner, CCRPlanner, Executor, MapfInfoEnvironment
 from .polygonal_roadmap import pathfinding
 
 
@@ -18,6 +18,8 @@ def run_all(args):
 def create_planner_from_config(config, env):
     if config['planner'] == 'CBS':
         return CBSPlanner(env, **config['planner_args'])
+    elif config['planner'] == 'CCR':
+        return CCRPlanner(env, **config['planner_args'])
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
