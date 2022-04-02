@@ -775,8 +775,7 @@ class CDM_CR:
         self.starts = starts
         self.goals = goals
         self.agents = tuple(i for i, _ in enumerate(goals))
-        self.priority_map = nx.DiGraph()
-        self.priority_map.add_nodes_from(self.g.nodes())
+        self.priority_map = g.to_directed()
         self.limit = limit
         self.k_robustness = k_robustness
         self.pad_paths = pad_paths
@@ -833,10 +832,16 @@ class CDM_CR:
         logging.info(f'options for priority edges: {options}')
 
         # compute decsion quality for the options, for the involved agents
+        for option in options:
+            self.compute_qualities(options)
 
         # make the decision
 
         # create constraints from priority map
+        return None
+    
+    def compute_qualities(self, options) -> list:
+        """compute one quality for each option for each agent"""
         return None
 
     def update_state(self, state):
