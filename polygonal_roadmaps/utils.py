@@ -3,8 +3,10 @@ import yaml
 import pickle
 import io
 import pstats
+import logging
 from pathlib import Path
 from polygonal_roadmaps import polygonal_roadmap
+from polygonal_roadmaps import pathfinding
 
 
 def read_pickle(planner_config, scen_config, scen):
@@ -76,3 +78,69 @@ def create_df_from_profile(profile):
     df['line'] = df["filename:lineno(function)"].apply(extract_line)
     df['function'] = df["filename:lineno(function)"].apply(extract_function)
     return df
+
+
+def run_all(args):
+    if args.loglevel is not None:
+        numeric_level = getattr(logging, args.loglevel.upper(), None)
+        logging.basicConfig(level=numeric_level)
+    for planner in args.planner:
+        for scenario in args.scen:
+            run_scenarios(scenario, planner, n_agents=args.n_agents, index=args.index)
+
+
+def create_planner_from_config(config, env):
+    if config['planner'] == 'CBS':
+        return polygonal_roadmap.CBSPlanner(env, **config['planner_args'])
+    elif config['planner'] == 'CCR':
+        return polygonal_roadmap.CCRPlanner(env, **config['planner_args'])
+    raise NotImplementedError(f"planner {config['planner']} does not exist.")
+
+
+def run_scenarios(scenario_yml, planner_yml, n_agents=None, index=None):
+    with open(Path("benchmark") / 'planner_config' / planner_yml) as stream:
+        planner_config = yaml.safe_load(stream)
+    with open(Path("benchmark") / 'scenario_config' / scenario_yml) as stream:
+        scenario_config = yaml.safe_load(stream)
+        if n_agents is not None:
+            scenario_config['n_agents'] = n_agents
+    if index is None:
+        scenarios = [scen for scen in scenario_config['scen']]
+    else:
+        scenarios = [scenario_config['scen'][index]]
+    for scen in scenarios:
+        env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=scenario_config['n_agents'])
+
+        planner = create_planner_from_config(planner_config, env)
+        path = Path('results') / planner_yml / scenario_yml / scen
+        path.mkdir(parents=True, exist_ok=True)
+        config = planner_config.update({'map': env.map_file, 'scen': scen})
+        run_one(planner, result_path=path / 'result.pkl', config=config)
+
+
+def run_one(planner, result_path=None, config=None):
+    data = None
+    try:
+        ex = polygonal_roadmap.Executor(planner.env, planner)
+        print('-----------------')
+        if result_path is not None:
+            print(f'{result_path}')
+        ex.run()
+        print(f'n_agents={len(ex.history[0])}')
+        print(f'took {len(ex.history)} steps to completion')
+        print(f'k-robustness with k={pathfinding.compute_solution_robustness(ex.get_history_as_solution())}')
+        print('-----------------')
+
+        data = ex.get_result()
+        data.config = config
+        logging.info('done')
+    except Exception as e:
+        if result_path is not None:
+            with open(result_path, mode="wb") as results:
+                pickle.dump(data, results)
+        logging.warning(f'Exception occured during execution:\n{e}')
+        raise e
+    finally:
+        if result_path is not None:
+            with open(result_path, mode="wb") as results:
+                pickle.dump(data, results)
