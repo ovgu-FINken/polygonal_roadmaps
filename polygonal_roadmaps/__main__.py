@@ -48,7 +48,7 @@ def run_scenarios(scenario_yml, planner_yml, n_agents=None, index=None):
 
 
 def run_one(planner, result_path=None, config=None):
-    results = None
+    data = None
     try:
         ex = Executor(planner.env, planner)
         print('-----------------')
@@ -63,7 +63,7 @@ def run_one(planner, result_path=None, config=None):
         data = ex.get_result()
         data.config = config
         logging.info('done')
-    except e:
+    except Exception as e:
         if result_path is not None:
             with open(result_path, mode="wb") as results:
                 pickle.dump(data, results)
