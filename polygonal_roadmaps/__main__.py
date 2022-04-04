@@ -48,22 +48,31 @@ def run_scenarios(scenario_yml, planner_yml, n_agents=None, index=None):
 
 
 def run_one(planner, result_path=None, config=None):
-    ex = Executor(planner.env, planner)
-    print('-----------------')
-    if result_path is not None:
-        print(f'{result_path}')
-    ex.run()
-    print(f'n_agents={len(ex.history[0])}')
-    print(f'took {len(ex.history)} steps to completion')
-    print(f'k-robustness with k={pathfinding.compute_solution_robustness(ex.get_history_as_solution())}')
-    print('-----------------')
+    results = None
+    try:
+        ex = Executor(planner.env, planner)
+        print('-----------------')
+        if result_path is not None:
+            print(f'{result_path}')
+        ex.run()
+        print(f'n_agents={len(ex.history[0])}')
+        print(f'took {len(ex.history)} steps to completion')
+        print(f'k-robustness with k={pathfinding.compute_solution_robustness(ex.get_history_as_solution())}')
+        print('-----------------')
 
-    data = ex.get_result()
-    data.config = config
-    logging.info('done')
-    if result_path is not None:
-        with open(result_path, mode="wb") as results:
-            pickle.dump(data, results)
+        data = ex.get_result()
+        data.config = config
+        logging.info('done')
+    except e:
+        if result_path is not None:
+            with open(result_path, mode="wb") as results:
+                pickle.dump(data, results)
+        logging.warning(f'Exception occured during execution:\n{e}')
+        raise e
+    finally:
+        if result_path is not None:
+            with open(result_path, mode="wb") as results:
+                pickle.dump(data, results)
 
 
 if __name__ == "__main__":
