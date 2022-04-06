@@ -360,6 +360,14 @@ def sum_of_cost(paths, graph=None, weight=None) -> float:
     return cost
 
 
+def nx_shortest(*args, **kwargs):
+    try:
+        return nx.shortest_path_length(*args, **kwargs)
+    except nx.NetworkXNoPath:
+        logging.info('no path')
+    return np.inf
+
+
 class CBSNode:
     def __init__(self, constraints: frozenset = None):
         self.children = ()
@@ -514,7 +522,7 @@ def decision_function(qualities, method=None):
     the default behaviour is to use the direct comparison method, which uses the option with the maximum of all quality values
     returns the index of the best quality option"""
     if method is None or method == 'direct_comparison':
-        columns = np.max(np.array(qualities), axis=1)
+        columns = np.max(np.array(qualities), axis=1, where=~np.isnan(np.array(qualities)), initial=-np.inf)
         return np.argmax(columns)
     elif method == 'random':
         return np.random.choice([i for i, _ in enumerate(qualities[0])])
@@ -917,7 +925,7 @@ class CDM_CR:
 
     def compute_qualities(self, options) -> list:
         """compute one quality for each option for each agent"""
-        path_costs = [nx.shortest_path_length(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
+        path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
                       for i, _ in enumerate(self.agents)]
         qualities = []
         for o in options:
@@ -932,7 +940,7 @@ class CDM_CR:
     def evaluate_option(self, edge, path_costs=None):
         """evaluate giveing priority to a given edge (option)"""
         if path_costs is None:
-            path_costs = [nx.shortest_path_length(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
+            path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
                           for i, _ in enumerate(self.agents)]
 
         # delete all edges going to the node $edge[1]
@@ -946,7 +954,7 @@ class CDM_CR:
 
         # compute all paths and their cost
         # if no path is found, cost = np.inf
-        new_path_costs = [nx.shortest_path_length(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
+        new_path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
                           for i, _ in enumerate(self.agents)]
 
         logging.info(f'edge: {edge[0:2]}, old cost: {path_costs}, new cost: {new_path_costs}')
