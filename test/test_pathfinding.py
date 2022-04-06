@@ -232,6 +232,6 @@ class TestCBS(unittest.TestCase):
 
 class TestCCR(unittest.TestCase):
     def testDirectComparison(self):
-        qualities = [np.array([3,2,1,2,0]), np.array([1,1,1,1,3])]
+        qualities = [np.array([-1, -1]), np.array([-1, -1]), np.array([-0.5, -1]), np.array([1.0, 0])]
         decision = pathfinding.decision_function(qualities, method='direct_comparison')
-        self.assertEqual(decision, 4)
+        self.assertEqual(decision, 3)

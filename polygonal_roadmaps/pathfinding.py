@@ -511,12 +511,11 @@ class SpaceTimeAStarCache:
 
 def decision_function(qualities, method=None):
     """compute a collective decison based on qualities of the options
-    !!! we minimize cost (i.e. quality has to be minimized)
     the default behaviour is to use the direct comparison method, which uses the option with the maximum of all quality values
     returns the index of the best quality option"""
     if method is None or method == 'direct_comparison':
-        columns = np.min(np.array(qualities), axis=0)
-        return np.argmin(columns)
+        columns = np.max(np.array(qualities), axis=1)
+        return np.argmax(columns)
     elif method == 'random':
         return np.random.choice([i for i, _ in enumerate(qualities[0])])
     else:
@@ -803,6 +802,7 @@ class CDM_CR:
         self.goals = goals
         self.agents = tuple(i for i, _ in enumerate(goals))
         self.priority_map = g.to_directed()
+        self.priorities = []
         self.limit = limit
         self.k_robustness = k_robustness
         self.pad_paths = pad_paths
@@ -811,7 +811,7 @@ class CDM_CR:
             'wait_action_cost': wait_action_cost
         }
         self.cache = SpaceTimeAStarCache(self.g, kwargs=astar_kwargs)
-        self.constraints = [[] for _ in self.agents]
+        self.constraints = []
 
     def run(self):
         conflicts = [None]
@@ -820,22 +820,27 @@ class CDM_CR:
             # plan paths, based on current constraints
             solution = []
             costs = 0
-            for start, goal, constraints in zip(self.starts, self.goals, self.constraints):
-                path, cost = self.cache.get_path(start, goal, frozenset(constraints))
+
+            for agent, _ in enumerate(self.starts):
+                start = self.starts[agent]
+                goal = self.goals[agent]
+                nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
+                path, cost = self.cache.get_path(start, goal, frozenset(nc))
                 costs += cost
                 solution.append(path)
+                logging.info(f'start: {start}, goal: {goal}, path: {path}')
 
             # find conflicts
             conflicts = self.find_conflicts(solution)
             if not conflicts:
                 return solution
-            self.resolve_first_conflict(conflicts)
+            self.constraints = self.resolve_first_conflict(conflicts)
             # go back to replanning (restart while)
-            return solution
+        return solution
 
     def find_conflicts(self, solution):
         if not solution_valid(solution):
-            raise nx.NetworkXNoPath()
+            logging.info(f'invalid solution: {solution}')
         limit = self.limit if self.pad_paths else None
         if self.discard_conflicts_beyond is not None:
             limit = self.discard_conflicts_beyond
@@ -866,7 +871,7 @@ class CDM_CR:
         # make the decision
         decision = options[decision_function(qualities)]
         logging.info(f'decision: {decision}')
-        
+
         # update the priority map with the descion
         # delete all edges going to the node $edge[1]
         edges = [e for e in self.priority_map.in_edges(decision[1])]
@@ -876,13 +881,39 @@ class CDM_CR:
 
         # insert $edge
         self.priority_map.add_edge(decision[0], decision[1], **decision[2])
+        self.priorities.append(decision[1])
 
         # create constraints from priority map
         return self.create_constraints_from_prio_map()
 
     def create_constraints_from_prio_map(self):
         # for each conflict, check which agent goes against prioritymap and update path accordingly
-        return None
+        # start from scratch:
+        constraints = self.constraints
+        solution, costs = [], 0
+        for agent, _ in enumerate(self.starts):
+            start = self.starts[agent]
+            goal = self.goals[agent]
+            nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
+            path, cost = self.cache.get_path(start, goal, frozenset(nc))
+            costs += cost
+            solution.append(path)
+
+        # find conflicts
+        conflicts = self.find_conflicts(solution)
+        for conflict in conflicts:
+            # find out if conflict involves node with priorities
+            for c in conflict.conflicting_agents:
+                logging.info(c)
+                # edge = t-1, t
+                edge = solution[c.agent][c.time - 1:c.time + 1]
+                logging.info(edge)
+                if edge in self.priority_map.edges():
+                    continue
+                constraints.append(c)
+            # recompute path for those agents, recompute conficts
+        logging.info(f"constraints: {constraints}")
+        return constraints
 
     def compute_qualities(self, options) -> list:
         """compute one quality for each option for each agent"""
@@ -897,7 +928,7 @@ class CDM_CR:
         self.starts = state
         self.cache.reset(state_only=True)
         # TODO: We may need to update/fix the priority map.
-    
+
     def evaluate_option(self, edge, path_costs=None):
         """evaluate giveing priority to a given edge (option)"""
         if path_costs is None:
