@@ -767,11 +767,21 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
 
 
 class CDM_CR:
-    def __init__(self, g, starts, goals, limit=10, wait_action_cost=1.0001, weight=None, k_robustness=1, pad_paths=False, discard_conflicts_beyond=None):
+    def __init__(self,
+                 g,
+                 starts,
+                 goals,
+                 limit=10,
+                 wait_action_cost=1.0001,
+                 weight=None,
+                 k_robustness=1,
+                 pad_paths=False,
+                 discard_conflicts_beyond=None):
         self.discard_conflicts_beyond = discard_conflicts_beyond
         assert len(starts) == len(goals)
         self.g = g
         compute_normalized_weight(self.g, weight)
+        self.weight = "weight"
         self.starts = starts
         self.goals = goals
         self.agents = tuple(i for i, _ in enumerate(goals))
@@ -828,26 +838,56 @@ class CDM_CR:
         logging.info(f'priorities: {priorities}')
         highest_priority_node = max(priorities, key=priorities.get)
         logging.info(f'chosen: {highest_priority_node}')
-        options = [(neighbor, highest_priority_node) for neighbor in self.g[highest_priority_node]]
+        options = self.priority_map.in_edges(nbunch=highest_priority_node, data=True)
         logging.info(f'options for priority edges: {options}')
 
         # compute decsion quality for the options, for the involved agents
-        for option in options:
-            self.compute_qualities(options)
+        qualities = self.compute_qualities(options)
+        logging.info(f'qualities: {qualities}')
 
         # make the decision
 
         # create constraints from priority map
         return None
-    
+
     def compute_qualities(self, options) -> list:
         """compute one quality for each option for each agent"""
-        return None
+        path_costs = [nx.shortest_path_length(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
+                      for i, _ in enumerate(self.agents)]
+        qualities = []
+        for o in options:
+            qualities.append(self.evaluate_option(o, path_costs=path_costs))
+        return qualities
 
     def update_state(self, state):
-        self.start = state
+        self.starts = state
         self.cache.reset(state_only=True)
         # TODO: We may need to update/fix the priority map.
+    
+    def evaluate_option(self, edge, path_costs=None):
+        """evaluate giveing priority to a given edge (option)"""
+        if path_costs is None:
+            path_costs = [nx.shortest_path_length(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
+                          for i, _ in enumerate(self.agents)]
+
+        # delete all edges going to the node $edge[1]
+        edges = self.priority_map.in_edges(edge[1])
+        self.g.remove_edges_from(edges)
+
+        # insert $edge
+        self.g.add_edge(edge[0], edge[1], **edge[2])
+
+        # compute all paths and their cost
+        # if no path is found, cost = np.inf
+        new_path_costs = [nx.shortest_path_length(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
+                          for i, _ in enumerate(self.agents)]
+
+        logging.info(f'edge: {edge[0:2]}, old cost: {path_costs}, new cost: {new_path_costs}')
+        # compute the difference in path cost
+        # np.inf - np.inf = np.nan
+        cost_diff = np.array(path_costs) - np.array(new_path_costs)
+
+        return cost_diff
 
 
 if __name__ == "__main__":

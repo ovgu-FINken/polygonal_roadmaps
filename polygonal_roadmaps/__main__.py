@@ -3,7 +3,6 @@ import argparse
 from .polygonal_roadmap import utils
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
     parser.add_argument("-planner", type=str, nargs='+', required=True)

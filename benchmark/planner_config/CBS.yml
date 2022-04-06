@@ -2,3 +2,4 @@ planner: CBS
 planner_args:
   limit: 200
   max_iter: 500_000
+  weight: 'dist'

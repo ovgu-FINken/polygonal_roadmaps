@@ -19,6 +19,13 @@ class Environment():
         self.state = start
         self.start = start
         self.goal = goal
+        self.perturbate_weights()
+
+    def perturbate_weights(self):
+        for u, v in self.g.edges():
+            if 'dist' not in self.g.edges[u, v]:
+                self.g.edges[u, v]['dist'] = 1.0
+            self.g.edges[u, v]['dist'] *= 1 + 0.00001 * np.random.randn()
 
     def get_graph(self) -> nx.Graph:
         return self.g
