@@ -6,6 +6,7 @@ from networkx.algorithms.shortest_paths.weighted import _weight_function
 from heapq import heappush, heappop
 from itertools import count
 from functools import partial
+import copy
 
 import logging
 
@@ -510,11 +511,12 @@ class SpaceTimeAStarCache:
 
 def decision_function(qualities, method=None):
     """compute a collective decison based on qualities of the options
+    !!! we minimize cost (i.e. quality has to be minimized)
     the default behaviour is to use the direct comparison method, which uses the option with the maximum of all quality values
     returns the index of the best quality option"""
     if method is None or method == 'direct_comparison':
-        columns = np.max(np.array(qualities), axis=0)
-        return np.argmax(columns)
+        columns = np.min(np.array(qualities), axis=0)
+        return np.argmin(columns)
     elif method == 'random':
         return np.random.choice([i for i, _ in enumerate(qualities[0])])
     else:
@@ -854,6 +856,7 @@ class CDM_CR:
         highest_priority_node = max(priorities, key=priorities.get)
         logging.info(f'chosen: {highest_priority_node}')
         options = self.priority_map.in_edges(nbunch=highest_priority_node, data=True)
+        options = copy.deepcopy(list(options))
         logging.info(f'options for priority edges: {options}')
 
         # compute decsion quality for the options, for the involved agents
@@ -861,8 +864,24 @@ class CDM_CR:
         logging.info(f'qualities: {qualities}')
 
         # make the decision
+        decision = options[decision_function(qualities)]
+        logging.info(f'decision: {decision}')
+        
+        # update the priority map with the descion
+        # delete all edges going to the node $edge[1]
+        edges = [e for e in self.priority_map.in_edges(decision[1])]
+        logging.info(f"edes: {edges}")
+        for e in list(edges):
+            self.priority_map.remove_edge(*e)
+
+        # insert $edge
+        self.priority_map.add_edge(decision[0], decision[1], **decision[2])
 
         # create constraints from priority map
+        return self.create_constraints_from_prio_map()
+
+    def create_constraints_from_prio_map(self):
+        # for each conflict, check which agent goes against prioritymap and update path accordingly
         return None
 
     def compute_qualities(self, options) -> list:
@@ -886,11 +905,13 @@ class CDM_CR:
                           for i, _ in enumerate(self.agents)]
 
         # delete all edges going to the node $edge[1]
-        edges = self.priority_map.in_edges(edge[1])
-        self.g.remove_edges_from(edges)
+        edges = [e for e in self.priority_map.in_edges(edge[1])]
+        logging.info(f"edes: {edges}")
+        for e in list(edges):
+            self.priority_map.remove_edge(*e)
 
         # insert $edge
-        self.g.add_edge(edge[0], edge[1], **edge[2])
+        self.priority_map.add_edge(edge[0], edge[1], **edge[2])
 
         # compute all paths and their cost
         # if no path is found, cost = np.inf
