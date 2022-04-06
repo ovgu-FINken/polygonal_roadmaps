@@ -508,6 +508,21 @@ class SpaceTimeAStarCache:
         return self.cache[start, goal, node_constraints]
 
 
+def decision_function(qualities, method=None):
+    """compute a collective decison based on qualities of the options
+    the default behaviour is to use the direct comparison method, which uses the option with the maximum of all quality values
+    returns the index of the best quality option"""
+    if method is None or method == 'direct_comparison':
+        columns = np.max(np.array(qualities), axis=0)
+        return np.argmax(columns)
+    elif method == 'random':
+        return np.random.choice([i for i, _ in enumerate(qualities[0])])
+    else:
+        raise NotImplementedError(f"{method} is not available as a decision function")
+
+    return 0
+
+
 class CBS:
     def __init__(self,
                  g,
