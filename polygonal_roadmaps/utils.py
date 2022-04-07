@@ -10,9 +10,13 @@ from polygonal_roadmaps import pathfinding
 
 
 def read_pickle(planner_config, scen_config, scen):
-    with open(Path("results") / planner_config / scen_config / scen / 'result.pkl', 'rb') as pklfile:
-        pkl = pickle.load(pklfile)
-    return pkl
+    try:
+        with open(Path("results") / planner_config / scen_config / scen / 'result.pkl', 'rb') as pklfile:
+            pkl = pickle.load(pklfile)
+        return pkl
+    except FileNotFoundError:
+        logging.warning(f'File {pklfile} not found')
+    return polygonal_roadmap.RunResult([], None, {})
 
 
 def convert_history_to_df(history):
@@ -33,6 +37,8 @@ def load_results(planner_config, scen_config):
         pkls[scen] = read_pickle(planner_config, scen_config, scen)
     profile_data = []
     for scen, pkl in pkls.items():
+        if pkl.profile is None:
+            continue
         df = pkl.profile
         df["scen"] = scen
         env = polygonal_roadmap.MapfInfoEnvironment(scen)
