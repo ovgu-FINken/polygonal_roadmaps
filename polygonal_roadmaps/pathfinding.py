@@ -365,7 +365,8 @@ def nx_shortest(*args, **kwargs):
         return nx.shortest_path_length(*args, **kwargs)
     except nx.NetworkXNoPath:
         logging.info('no path')
-    return np.inf
+    # inf, but not inf (avoids NAN-problems)
+    return 1e100
 
 
 class CBSNode:
@@ -811,6 +812,7 @@ class CDM_CR:
         self.agents = tuple(i for i, _ in enumerate(goals))
         self.priority_map = g.to_directed()
         self.priorities = []
+        self.priorities_in = []
         self.limit = limit
         self.k_robustness = k_robustness
         self.pad_paths = pad_paths
@@ -890,6 +892,7 @@ class CDM_CR:
         # insert $edge
         self.priority_map.add_edge(decision[0], decision[1], **decision[2])
         self.priorities.append(decision[1])
+        self.priorities_in.append(decision[0])
 
         # create constraints from priority map
         return self.create_constraints_from_prio_map()

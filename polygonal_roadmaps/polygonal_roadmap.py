@@ -106,6 +106,7 @@ class CBSPlanner(Planner):
         self.kwargs = kwargs
         sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
         self.cbs = pathfinding.CBS(self.env.g, sg, **self.kwargs)
+        self.history = []
 
     def get_plan(self, *_):
         if self.replan_required:
@@ -123,6 +124,7 @@ class CBSPlanner(Planner):
             else:
                 ret.append([None])
         ret = zip_longest(*ret, fillvalue=None)
+        self.history.append({"solution": plans})
         return list(ret)
 
 
@@ -133,12 +135,14 @@ class CCRPlanner(Planner):
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
         self.ccr = pathfinding.CDM_CR(self.env.g, self.env.state, self.env.goal, **kwargs)
+        self.history = []
 
     def get_plan(self, *_):
         if self.replan_required:
             self.ccr.update_state(self.env.state)
         plans = self.ccr.run()
         # reintroduce plan for those states that have already finished -> i.e., where state is None
+        self.history.append({"solution": plans, "priorities": list(zip(self.ccr.priorities_in, self.ccr.priorities))})
         print(plans)
         j = 0
         ret = []
@@ -150,6 +154,9 @@ class CCRPlanner(Planner):
                 ret.append([None])
         ret = zip_longest(*ret, fillvalue=None)
         return list(ret)
+
+    def get_step_history(self):
+        return self.history
 
 
 class Executor():
@@ -229,3 +236,4 @@ class RunResult:
     history: list
     profile: pd.DataFrame
     config: dict
+    planner_step_history: list = None
