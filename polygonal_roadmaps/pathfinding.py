@@ -845,6 +845,9 @@ class CDM_CR:
             if not conflicts:
                 return solution
             self.constraints = self.resolve_first_conflict(conflicts)
+            # if this happens - the planning has no more nodes left to prioritize
+            if self.constraints is None:
+                return solution
             # go back to replanning (restart while)
         return solution
 
@@ -866,9 +869,13 @@ class CDM_CR:
                 if x.node not in priorities:
                     priorities[x.node] = 0
                 priorities[x.node] += x.time
+                if x.node in self.priorities:
+                    priorities[x.node] = 0
         # priorities now holds all nodes with conflicts as key, agent_i * time_i as value
         logging.info(f'priorities: {priorities}')
         highest_priority_node = max(priorities, key=priorities.get)
+        if priorities[highest_priority_node] == 0:
+            return None
         logging.info(f'chosen: {highest_priority_node}')
         options = self.priority_map.in_edges(nbunch=highest_priority_node, data=True)
         options = copy.deepcopy(list(options))
