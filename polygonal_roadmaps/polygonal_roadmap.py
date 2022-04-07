@@ -167,7 +167,6 @@ class CCRPlanner(Planner):
         plans = self.ccr.run()
         # reintroduce plan for those states that have already finished -> i.e., where state is None
         self.history.append({"solution": plans, "priorities": list(zip(self.ccr.priorities_in, self.ccr.priorities))})
-        print(plans)
         j = 0
         ret = []
         for i, s in enumerate(self.env.state):

@@ -1,3 +1,4 @@
+from numpy import kaiser
 import pandas as pd
 import yaml
 import pickle
@@ -47,7 +48,7 @@ def load_results(planner_config, scen_config):
         df['config'] = pkl.config
         df['planner'] = planner_config
         df['scen'] = scen_config
-        profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(expand_node)', '(step)'])])
+        profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(run)', '(nx_shortest)'])])
     if profile_data:
         profile_df = pd.concat(profile_data, ignore_index=True)
     else:
@@ -141,11 +142,15 @@ def run_one(planner, result_path=None, config=None):
         ex.run()
         print(f'n_agents={len(ex.history[0])}')
         print(f'took {len(ex.history)} steps to completion')
-        print(f'k-robustness with k={pathfinding.compute_solution_robustness(ex.get_history_as_solution())}')
+        k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+        print(f'k-robustness with k={k}')
         print('-----------------')
 
         data = ex.get_result()
         data.config = config
+        data.k = k
+        data.makespan = len(ex.history)
+        data.sum_of_cost = pathfinding.sum_of_cost(ex.get_history_as_solution(), ex.env.g, weight="dist")
         logging.info('done')
     except Exception as e:
         if result_path is not None:
