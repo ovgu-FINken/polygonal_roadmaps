@@ -838,6 +838,8 @@ class CDM_CR:
                 goal = self.goals[agent]
                 nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
                 path, cost = self.cache.get_path(start, goal, frozenset(nc))
+                if not path:
+                    logging.warning(f"no path found {start} - {goal}")
                 costs += cost
                 solution.append(path)
                 logging.info(f'start: {start}, goal: {goal}, path: {path}')
