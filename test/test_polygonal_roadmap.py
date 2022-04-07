@@ -46,3 +46,11 @@ class TestPlanningExecution(unittest.TestCase):
     def testPlanningWithCBSHorizon(self):
         planner = polygonal_roadmap.CBSPlanner(self.env, horizon=3, discard_conflicts_beyond=3)
         self.checkPlanner(planner)
+
+    def testPlanningWithPrioritizedPlanner(self):
+        planner = polygonal_roadmap.PrioritizedPlanner(self.env)
+        self.checkPlanner(planner)
+
+    def testPlanningCCRPlanner(self):
+        planner = polygonal_roadmap.CCRPlanner(self.env)
+        self.checkPlanner(planner)

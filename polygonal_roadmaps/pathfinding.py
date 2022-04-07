@@ -771,9 +771,11 @@ class CBS:
         return h
 
 
-def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True):
+def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None):
     solution = []
-    compute_normalized_weight(graph, "dist")
+    if weight is None:
+        weight = "dist"
+    compute_normalized_weight(graph, weight)
     for start, goal in start_goal:
         if pad_paths:
             node_occupancy = compute_node_occupancy(solution, limit=limit)

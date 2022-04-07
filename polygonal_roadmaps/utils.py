@@ -10,12 +10,13 @@ from polygonal_roadmaps import pathfinding
 
 
 def read_pickle(planner_config, scen_config, scen):
+    location = Path("results") / planner_config / scen_config / scen / 'result.pkl'
     try:
-        with open(Path("results") / planner_config / scen_config / scen / 'result.pkl', 'rb') as pklfile:
+        with open(location, 'rb') as pklfile:
             pkl = pickle.load(pklfile)
         return pkl
     except FileNotFoundError:
-        logging.warning(f'File {pklfile} not found')
+        logging.warning(f'File {location} not found')
     return polygonal_roadmap.RunResult([], None, {})
 
 
@@ -47,7 +48,11 @@ def load_results(planner_config, scen_config):
         df['planner'] = planner_config
         df['scen'] = scen_config
         profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(expand_node)', '(step)'])])
-    profile_df = pd.concat(profile_data, ignore_index=True)
+    if profile_data:
+        profile_df = pd.concat(profile_data, ignore_index=True)
+    else:
+        logging.warning(f'no profiling data for {planner_config}{scen_config}')
+        profile_df = pd.DataFrame()
     return pkls, profile_df
 
 

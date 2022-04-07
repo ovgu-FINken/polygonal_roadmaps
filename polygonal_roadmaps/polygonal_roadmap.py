@@ -103,12 +103,13 @@ class FixedPlanner(Planner):
 
 
 class PrioritizedPlanner(Planner):
-    def __init__(self, environment, horizon=None) -> None:
+    def __init__(self, environment, horizon=None, weight=None) -> None:
         super().__init__(environment, replan_required=(horizon is not None))
+        self.weight = weight
 
     def get_plan(self, *_):
         sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
-        plans = pathfinding.prioritized_plans(self.env.g, sg)
+        plans = pathfinding.prioritized_plans(self.env.g, sg, weight=self.weight)
         j = 0
         ret = []
         logging.info(f"state: {self.env.state}")
