@@ -102,6 +102,27 @@ class FixedPlanner(Planner):
         return self._plan
 
 
+class PrioritizedPlanner(Planner):
+    def __init__(self, environment, horizon=None) -> None:
+        super().__init__(environment, replan_required=(horizon is not None))
+
+    def get_plan(self, *_):
+        sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
+        plans = pathfinding.prioritized_plans(self.env.g, sg)
+        j = 0
+        ret = []
+        logging.info(f"state: {self.env.state}")
+        for i, s in enumerate(self.env.state):
+            if s is not None:
+                ret.append(plans[j] + [None])
+                j += 1
+            else:
+                ret.append([None])
+        ret = zip_longest(*ret, fillvalue=None)
+        self.history.append({"solution": plans})
+        return list(ret)
+
+
 class CBSPlanner(Planner):
     def __init__(self, environment, horizon: int = None, **kwargs) -> None:
         # initialize the planner.

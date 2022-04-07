@@ -94,6 +94,8 @@ def create_planner_from_config(config, env):
         return polygonal_roadmap.CBSPlanner(env, **config['planner_args'])
     elif config['planner'] == 'CCR':
         return polygonal_roadmap.CCRPlanner(env, **config['planner_args'])
+    elif config['planner'] == 'PrioritizedPlanner':
+        return polygonal_roadmap.PrioritizedPlanner(env, **config['planner_args'])
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 

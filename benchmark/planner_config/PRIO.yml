@@ -1,0 +1,3 @@
+planner: PrioritizedPlanner
+planner_args:
+  weight: 'dist'
