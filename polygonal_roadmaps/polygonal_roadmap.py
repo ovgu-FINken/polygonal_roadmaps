@@ -87,6 +87,10 @@ class Planner():
     def __init__(self, environment, replan_required=False) -> None:
         self.env = environment
         self.replan_required = replan_required
+        self.history = []
+
+    def get_step_history(self):
+        return self.history
 
 
 class FixedPlanner(Planner):
@@ -106,7 +110,6 @@ class CBSPlanner(Planner):
         self.kwargs = kwargs
         sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
         self.cbs = pathfinding.CBS(self.env.g, sg, **self.kwargs)
-        self.history = []
 
     def get_plan(self, *_):
         if self.replan_required:
@@ -135,7 +138,6 @@ class CCRPlanner(Planner):
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
         self.ccr = pathfinding.CDM_CR(self.env.g, self.env.state, self.env.goal, **kwargs)
-        self.history = []
 
     def get_plan(self, *_):
         if self.replan_required:
@@ -154,9 +156,6 @@ class CCRPlanner(Planner):
                 ret.append([None])
         ret = zip_longest(*ret, fillvalue=None)
         return list(ret)
-
-    def get_step_history(self):
-        return self.history
 
 
 class Executor():
@@ -216,7 +215,8 @@ class Executor():
         return RunResult(
             self.history,
             utils.create_df_from_profile(self.profile),
-            {}
+            {},
+            planner_step_history=self.planner.get_step_history()
         )
 
 
