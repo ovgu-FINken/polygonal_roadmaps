@@ -40,17 +40,17 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertIsInstance(env, polygonal_roadmap.Environment)
 
     def testPlanningWithCBS(self):
-        planner = polygonal_roadmap.CBSPlanner(self.env)
+        planner = polygonal_roadmap.CBSPlanner(self.env, limit=100)
         self.checkPlanner(planner)
 
     def testPlanningWithCBSHorizon(self):
-        planner = polygonal_roadmap.CBSPlanner(self.env, horizon=3, discard_conflicts_beyond=3)
+        planner = polygonal_roadmap.CBSPlanner(self.env, horizon=3, discard_conflicts_beyond=3, limit=100)
         self.checkPlanner(planner)
 
     def testPlanningWithPrioritizedPlanner(self):
-        planner = polygonal_roadmap.PrioritizedPlanner(self.env)
+        planner = polygonal_roadmap.PrioritizedPlanner(self.env, limit=100)
         self.checkPlanner(planner)
 
     def testPlanningCCRPlanner(self):
-        planner = polygonal_roadmap.CCRPlanner(self.env)
+        planner = polygonal_roadmap.CCRPlanner(self.env, limit=100)
         self.checkPlanner(planner)
