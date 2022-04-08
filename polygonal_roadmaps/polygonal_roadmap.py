@@ -216,7 +216,7 @@ class Executor():
                     plan = plan[1:]
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
-            self.history = None
+            self.history = []
         if profiling:
             self.profile.disable()
         logging.info("Planning complete")
