@@ -948,6 +948,8 @@ class CDM_CR:
         qualities = []
         for o in options:
             qualities.append(self.evaluate_option(o, path_costs=path_costs))
+        qualities = np.array(qualities)
+        qualities = qualities - np.min(qualities, axis=0)
         return qualities
 
     def update_state(self, state):
@@ -979,8 +981,7 @@ class CDM_CR:
         # compute the difference in path cost
         # np.inf - np.inf = np.nan
         cost_diff = np.array(path_costs) - np.array(new_path_costs)
-        qualities = cost_diff - np.min(cost_diff)
-        return qualities
+        return cost_diff
 
 
 if __name__ == "__main__":
