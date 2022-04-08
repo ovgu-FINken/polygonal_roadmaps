@@ -97,7 +97,7 @@ def create_df_from_profile(profile):
 def run_all(args):
     if args.loglevel is not None:
         numeric_level = getattr(logging, args.loglevel.upper(), None)
-        logging.basicConfig(level=numeric_level)
+        logging.basicConfig(level=numeric_level, filename=args.logfile)
     for planner in args.planner:
         for scenario in args.scen:
             run_scenarios(scenario, planner, n_agents=args.n_agents, index=args.index)

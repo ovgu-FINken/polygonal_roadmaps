@@ -979,8 +979,8 @@ class CDM_CR:
         # compute the difference in path cost
         # np.inf - np.inf = np.nan
         cost_diff = np.array(path_costs) - np.array(new_path_costs)
-
-        return cost_diff
+        qualities = cost_diff - np.min(cost_diff)
+        return qualities
 
 
 if __name__ == "__main__":

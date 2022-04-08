@@ -10,5 +10,6 @@ if __name__ == "__main__":
     parser.add_argument("-n_agents", type=int, default=None)
     parser.add_argument("-index", type=int, default=None)
     parser.add_argument("-loglevel", type=str, default=None)
+    parser.add_argument("-logfile", type=str, default=None)
     args = parser.parse_args()
     utils.run_all(args)
