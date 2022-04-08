@@ -141,19 +141,20 @@ def run_one(planner, result_path=None, config=None):
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
+        data = ex.get_result()
         print(f'n_agents={len(ex.env.start)}')
         if ex.history:
             print(f'took {len(ex.history)} steps to completion')
             k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
             print(f'k-robustness with k={k}')
+            data.config = config
+            data.k = k
+            data.makespan = len(ex.history)
         else:
+            data.k = -1
             print("run failed")
         print('-----------------')
 
-        data = ex.get_result()
-        data.config = config
-        data.k = k
-        data.makespan = len(ex.history)
         # data.sum_of_cost = pathfinding.sum_of_cost(ex.get_history_as_solution(), ex.env.g, weight="dist")
         logging.info('done')
     except Exception as e:
