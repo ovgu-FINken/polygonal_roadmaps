@@ -142,9 +142,12 @@ def run_one(planner, result_path=None, config=None):
             print(f'{result_path}')
         ex.run()
         print(f'n_agents={len(ex.env.start)}')
-        print(f'took {len(ex.history)} steps to completion')
-        k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
-        print(f'k-robustness with k={k}')
+        if ex.history:
+            print(f'took {len(ex.history)} steps to completion')
+            k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+            print(f'k-robustness with k={k}')
+        else:
+            print("run failed")
         print('-----------------')
 
         data = ex.get_result()
