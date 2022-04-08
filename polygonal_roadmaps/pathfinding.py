@@ -910,31 +910,35 @@ class CDM_CR:
 
     def create_constraints_from_prio_map(self):
         # for each conflict, check which agent goes against prioritymap and update path accordingly
-        # start from scratch:
         constraints = self.constraints
         solution, costs = [], 0
-        for agent, _ in enumerate(self.starts):
-            start = self.starts[agent]
-            goal = self.goals[agent]
-            nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
-            path, cost = self.cache.get_path(start, goal, frozenset(nc))
-            costs += cost
-            solution.append(path)
+        recompute_needed = True
+        while recompute_needed:
+            solution, costs = [], 0
+            for agent, _ in enumerate(self.starts):
+                start = self.starts[agent]
+                goal = self.goals[agent]
+                nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
+                path, cost = self.cache.get_path(start, goal, frozenset(nc))
+                costs += cost
+                solution.append(path)
 
-        # find conflicts
-        conflicts = self.find_conflicts(solution)
-        for conflict in conflicts:
-            # find out if conflict involves node with priorities
-            for c in conflict.conflicting_agents:
-                logging.info(c)
-                # edge = t-1, t
-                edge = solution[c.agent][c.time - 1:c.time + 1]
-                logging.info(edge)
-                if edge in self.priority_map.edges():
-                    continue
-                constraints.append(c)
-            # recompute path for those agents, recompute conficts
-        logging.info(f"constraints: {constraints}")
+            # find conflicts
+            recompute_needed = False
+            conflicts = self.find_conflicts(solution)
+            for conflict in conflicts:
+                # find out if conflict involves node with priorities
+                for c in conflict.conflicting_agents:
+                    logging.info(c)
+                    # edge = t-1, t
+                    edge = solution[c.agent][c.time - 1:c.time + 1]
+                    logging.info(edge)
+                    if edge in self.priority_map.edges():
+                        continue
+                    constraints.append(c)
+                    recompute_needed = True
+                # recompute path for those agents, recompute conficts
+            logging.info(f"constraints: {constraints}")
         return constraints
 
     def compute_qualities(self, options) -> list:

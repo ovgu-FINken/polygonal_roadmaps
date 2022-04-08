@@ -20,6 +20,8 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertGreaterEqual(pathfinding.compute_solution_robustness(executor.get_history_as_solution()),
                                 1,
                                 msg="Path should be k-robust with k>=1")
+        self.assertEqual(len(planner.env.start), len(executor.history[0]))
+        self.assertEqual(len(planner.env.start), len(executor.history[-1]))
 
     def testMinimalEnvironment(self):
         g = nx.from_edgelist([(1, 2), (2, 3), (1, 3), (1, 4)])

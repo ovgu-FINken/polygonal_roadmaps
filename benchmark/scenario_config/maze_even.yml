@@ -10,4 +10,4 @@ scen:
   - even/maze-32-32-4-even-9.scen
   - even/maze-32-32-4-even-10.scen
   - even/maze-32-32-4-even-11.scen
-n_agents: 5
+n_agents: 10

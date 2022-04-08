@@ -1,4 +1,3 @@
-from numpy import kaiser
 import pandas as pd
 import yaml
 import pickle
@@ -39,7 +38,7 @@ def load_results(planner_config, scen_config):
         pkls[scen] = read_pickle(planner_config, scen_config, scen)
     profile_data = []
     for scen, pkl in pkls.items():
-        if pkl.profile is None:
+        if pkl is None or pkl.profile is None:
             continue
         df = pkl.profile
         df["scen"] = scen
@@ -48,6 +47,9 @@ def load_results(planner_config, scen_config):
         df['config'] = pkl.config
         df['planner'] = planner_config
         df['scen'] = scen_config
+        df['robustness'] = pkl.k
+        df['makespan'] = pkl.makespan
+        #df['SOC'] = pkl.sum_of_cost
         profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(run)', '(nx_shortest)'])])
     if profile_data:
         profile_df = pd.concat(profile_data, ignore_index=True)
