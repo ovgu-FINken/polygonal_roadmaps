@@ -1,16 +1,17 @@
+from http.client import REQUEST_URI_TOO_LONG
 import pandas as pd
 import yaml
 import pickle
 import io
 import pstats
 import logging
+import glob
 from pathlib import Path
 from polygonal_roadmaps import polygonal_roadmap
 from polygonal_roadmaps import pathfinding
 
 
-def read_pickle(planner_config, scen_config, scen):
-    location = Path("results") / planner_config / scen_config / scen / 'result.pkl'
+def read_pickle(location):
     try:
         with open(location, 'rb') as pklfile:
             pkl = pickle.load(pklfile)
@@ -30,31 +31,31 @@ def convert_history_to_df(history):
     return pd.DataFrame(records)
 
 
-def load_results(planner_config, scen_config):
-    with open(Path('benchmark') / 'scenario_config' / scen_config) as configfile:
-        scen_data = yaml.safe_load(configfile)
+def load_results():
+    result_files = glob.glob("results/**/results.pkl")
     pkls = {}
-    for scen in scen_data['scen']:
-        pkls[scen] = read_pickle(planner_config, scen_config, scen)
+    for dings in result_files:
+        _, planner_config, even, scen, *_ = dings.split('/')
+        pkls[even, scen] = read_pickle(planner_config, scen)
     profile_data = []
     for scen, pkl in pkls.items():
         if pkl is None or pkl.profile is None:
             continue
         df = pkl.profile
-        df["scen"] = scen
-        env = polygonal_roadmap.MapfInfoEnvironment(scen)
+        df["scen"] = scen[1]
+        df["scentype"] = scen[0]
+        env = polygonal_roadmap.MapfInfoEnvironment(scen[1])
         df['map'] = env.map_file
         df['config'] = pkl.config
         df['planner'] = planner_config
-        df['scen'] = scen_config
         df['robustness'] = pkl.k
         df['makespan'] = pkl.makespan
-        #df['SOC'] = pkl.sum_of_cost
+        # df['SOC'] = pkl.sum_of_cost
         profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(run)', '(nx_shortest)'])])
     if profile_data:
         profile_df = pd.concat(profile_data, ignore_index=True)
     else:
-        logging.warning(f'no profiling data for {planner_config}{scen_config}')
+        logging.warning("something went wrong, profile data is empty(?)")
         profile_df = pd.DataFrame()
     return pkls, profile_df
 
@@ -99,8 +100,8 @@ def run_all(args):
         numeric_level = getattr(logging, args.loglevel.upper(), None)
         logging.basicConfig(level=numeric_level, filename=args.logfile)
     for planner in args.planner:
-        for scenario in args.scen:
-            run_scenarios(scenario, planner, n_agents=args.n_agents, index=args.index)
+        for map_file in args.maps:
+            run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index)
 
 
 def create_planner_from_config(config, env):
@@ -113,22 +114,20 @@ def create_planner_from_config(config, env):
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenarios(scenario_yml, planner_yml, n_agents=None, index=None):
+def run_scenarios(map_file, planner_yml, n_agents=10, index=None):
     with open(Path("benchmark") / 'planner_config' / planner_yml) as stream:
         planner_config = yaml.safe_load(stream)
-    with open(Path("benchmark") / 'scenario_config' / scenario_yml) as stream:
-        scenario_config = yaml.safe_load(stream)
-        if n_agents is not None:
-            scenario_config['n_agents'] = n_agents
     if index is None:
-        scenarios = [scen for scen in scenario_config['scen']]
+        scenarios = glob.glob(f"benchmark/scen/even/{map_file}-even-*.scen")
+        # strip path from scenario
+        scenarios = ['even/' + s.split('/')[-1] for s in scenarios]
     else:
-        scenarios = [scenario_config['scen'][index]]
+        scenarios = [f"even/{map_file}-even-{index}.scen"]
     for scen in scenarios:
-        env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=scenario_config['n_agents'])
+        env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents)
 
         planner = create_planner_from_config(planner_config, env)
-        path = Path('results') / planner_yml / scenario_yml / scen
+        path = Path('results') / planner_yml / scen
         path.mkdir(parents=True, exist_ok=True)
         config = planner_config.update({'map': env.map_file, 'scen': scen})
         run_one(planner, result_path=path / 'result.pkl', config=config)
