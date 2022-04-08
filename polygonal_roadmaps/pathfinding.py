@@ -872,7 +872,7 @@ class CDM_CR:
             for x in conflict.conflicting_agents:
                 if x.node not in priorities:
                     priorities[x.node] = 0
-                priorities[x.node] += 1 / tx.time
+                priorities[x.node] += 1 / x.time
                 if x.node in self.priorities:
                     priorities[x.node] = 0
         # priorities now holds all nodes with conflicts as key, agent_i * time_i as value
