@@ -47,13 +47,20 @@ class MapfInfoEnvironment(Environment):
         self.height = df.h[0]
         self.map_file = Path() / "benchmark" / "maps" / df.map_name[0]
         self.scenario_file = scenario_file
-        graph = pathfinding.read_movingai_map(self.map_file)
+        graph, w, h, data = pathfinding.read_movingai_map(self.map_file)
 
         sg = df.loc[:, "x0":"y1"].to_records(index=False)
         if n_agents is None:
             n_agents = len(sg)
         start = [(x, y) for y, x, *_ in sg[:n_agents]]
         goal = [(x, y) for *_, y, x, in sg[:n_agents]]
+        for s in start:
+            if s not in graph:
+                logging.error(f"start {s} not in map {self.map_file}, value is {data[s[0]][s[1]]}")
+
+        for g in goal:
+            if g not in graph:
+                logging.error(f"goal {g} not in map {self.map_file}, value is {data[s[0]][s[1]]}")
         super().__init__(graph, start, goal)
 
     def get_background_matrix(self):

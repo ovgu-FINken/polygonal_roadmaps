@@ -51,7 +51,7 @@ def read_movingai_map(path):
     height = int("".join([d for d in lines[1] if d in list("0123456789")]))
     width = int("".join([d for d in lines[2] if d in list("0123456789")]))
 
-    graph = nx.grid_2d_graph(width, height)
+    graph = nx.grid_2d_graph(height, width)
     for edge in graph.edges():
         graph.edges()[edge]['dist'] = 1
     graph.add_edges_from(
@@ -75,7 +75,7 @@ def read_movingai_map(path):
 
     for node in graph.nodes():
         graph.nodes()[node]["pos"] = node
-    return graph
+    return graph, width, height, data
 
 
 @dataclass(eq=True, frozen=True, init=True)
