@@ -141,7 +141,7 @@ def run_one(planner, result_path=None, config=None):
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
-        print(f'n_agents={len(ex.history[0])}')
+        print(f'n_agents={len(ex.env.start)}')
         print(f'took {len(ex.history)} steps to completion')
         k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
         print(f'k-robustness with k={k}')
