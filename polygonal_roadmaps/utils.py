@@ -152,7 +152,7 @@ def run_one(planner, result_path=None, config=None):
         data.config = config
         data.k = k
         data.makespan = len(ex.history)
-        data.sum_of_cost = pathfinding.sum_of_cost(ex.get_history_as_solution(), ex.env.g, weight="dist")
+        # data.sum_of_cost = pathfinding.sum_of_cost(ex.get_history_as_solution(), ex.env.g, weight="dist")
         logging.info('done')
     except Exception as e:
         if result_path is not None:
