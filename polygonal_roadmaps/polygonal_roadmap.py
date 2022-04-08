@@ -113,6 +113,7 @@ class PrioritizedPlanner(Planner):
     def __init__(self, environment, horizon=None, **kwargs) -> None:
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
+        self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
 
     def get_plan(self, *_):
         sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
@@ -137,6 +138,7 @@ class CBSPlanner(Planner):
         # if the horizon is not None, we want to replan after execution of one step
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
+        self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
         sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
         self.cbs = pathfinding.CBS(self.env.g, sg, **self.kwargs)
 
@@ -166,7 +168,8 @@ class CCRPlanner(Planner):
         # if the horizon is not None, we want to replan after execution of one step
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
-        self.ccr = pathfinding.CDM_CR(self.env.g, self.env.state, self.env.goal, **kwargs)
+        self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
+        self.ccr = pathfinding.CDM_CR(self.env.g, self.env.state, self.env.goal, **self.kwargs)
 
     def get_plan(self, *_):
         if self.replan_required:
