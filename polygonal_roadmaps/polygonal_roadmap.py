@@ -199,20 +199,24 @@ class Executor():
             return
         if profiling:
             self.profile.enable()
-        plan = self.planner.get_plan(self.env)
-        for i in range(self.time_frame):
-            logging.info(f"At iteration {i} / {self.time_frame}")
-            self.step(plan)
-            # (goal is reached)
-            if all(s is None for s in self.env.state):
-                # plan = plan[1:]
-                self.profile.disable()
-                return self.history
-            if self.planner.replan_required:
-                # create new plan on updated state
-                plan = self.planner.get_plan(self.env)
-            else:
-                plan = plan[1:]
+        try:
+            plan = self.planner.get_plan(self.env)
+            for i in range(self.time_frame):
+                logging.info(f"At iteration {i} / {self.time_frame}")
+                self.step(plan)
+                # (goal is reached)
+                if all(s is None for s in self.env.state):
+                    # plan = plan[1:]
+                    self.profile.disable()
+                    return self.history
+                if self.planner.replan_required:
+                    # create new plan on updated state
+                    plan = self.planner.get_plan(self.env)
+                else:
+                    plan = plan[1:]
+        except nx.NetworkXNoPath:
+            logging.warning("planning failed")
+            self.history = None
         if profiling:
             self.profile.disable()
         logging.info("Planning complete")
@@ -244,7 +248,7 @@ class Executor():
             self.history,
             utils.create_df_from_profile(self.profile),
             {},
-            planner_step_history=self.planner.get_step_history()
+            planner_step_history=self.planner.get_step_history(),
         )
 
 

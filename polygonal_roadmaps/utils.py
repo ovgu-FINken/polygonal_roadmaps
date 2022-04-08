@@ -101,7 +101,7 @@ def run_all(args):
         logging.basicConfig(level=numeric_level, filename=args.logfile)
     for planner in args.planner:
         for map_file in args.maps:
-            run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index)
+            run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index, scentype=args.scentype)
 
 
 def create_planner_from_config(config, env):
@@ -114,15 +114,15 @@ def create_planner_from_config(config, env):
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenarios(map_file, planner_yml, n_agents=10, index=None):
+def run_scenarios(map_file, planner_yml, n_agents=10, index=None, scentype="even"):
     with open(Path("benchmark") / 'planner_config' / planner_yml) as stream:
         planner_config = yaml.safe_load(stream)
     if index is None:
-        scenarios = glob.glob(f"benchmark/scen/even/{map_file}-even-*.scen")
+        scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
         # strip path from scenario
-        scenarios = ['even/' + s.split('/')[-1] for s in scenarios]
+        scenarios = ['{scentype}/' + s.split('/')[-1] for s in scenarios]
     else:
-        scenarios = [f"even/{map_file}-even-{index}.scen"]
+        scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
     for scen in scenarios:
         env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents)
 
