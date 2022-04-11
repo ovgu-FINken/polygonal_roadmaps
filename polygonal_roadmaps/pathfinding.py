@@ -840,6 +840,7 @@ class CDM_CR:
                 path, cost = self.cache.get_path(start, goal, frozenset(nc))
                 if not path:
                     logging.warning(f"no path found {start} - {goal}")
+                    raise nx.NetworkXNoPath
                 costs += cost
                 solution.append(path)
                 logging.info(f'start: {start}, goal: {goal}, path: {path}')
