@@ -1,4 +1,3 @@
-from http.client import REQUEST_URI_TOO_LONG
 import pandas as pd
 import yaml
 import pickle
@@ -6,6 +5,7 @@ import io
 import pstats
 import logging
 import glob
+from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import polygonal_roadmap
 from polygonal_roadmaps import pathfinding
@@ -32,24 +32,26 @@ def convert_history_to_df(history):
 
 
 def load_results():
-    result_files = glob.glob("results/**/results.pkl")
+    result_files = glob.glob("results/*/*/**/result.pkl")
+    logging.debug(f'loading results: {result_files}')
     pkls = {}
     for dings in result_files:
         _, planner_config, even, scen, *_ = dings.split('/')
-        pkls[even, scen] = read_pickle(planner_config, scen)
+        pkls[even, scen] = read_pickle(dings)
     profile_data = []
-    for scen, pkl in pkls.items():
+    for scen, pkl in tqdm(pkls.items()):
         if pkl is None or pkl.profile is None:
             continue
         df = pkl.profile
         df["scen"] = scen[1]
         df["scentype"] = scen[0]
-        env = polygonal_roadmap.MapfInfoEnvironment(scen[1])
+        env = polygonal_roadmap.MapfInfoEnvironment(Path(even) / scen[1])
         df['map'] = env.map_file
-        df['config'] = pkl.config
+        # df['config'] = pkl.config
         df['planner'] = planner_config
         df['robustness'] = pkl.k
-        df['makespan'] = pkl.makespan
+        if hasattr(pkl, 'makespan'):
+            df['makespan'] = pkl.makespan
         # df['SOC'] = pkl.sum_of_cost
         profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(run)', '(nx_shortest)'])])
     if profile_data:
