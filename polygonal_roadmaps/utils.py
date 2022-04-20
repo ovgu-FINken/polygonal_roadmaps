@@ -31,24 +31,27 @@ def convert_history_to_df(history):
     return pd.DataFrame(records)
 
 
-def load_results():
-    result_files = glob.glob("results/*/*/**/result.pkl")
+def load_results(path=None):
+    if path is None:
+        path = "results"
+    result_files = glob.glob(f"{path}/*/*/**/result.pkl")
     logging.debug(f'loading results: {result_files}')
     pkls = {}
     for dings in result_files:
         _, planner_config, even, scen, *_ = dings.split('/')
-        pkls[even, scen] = read_pickle(dings)
+        pkls[planner_config, even, scen] = read_pickle(dings)
     profile_data = []
-    for scen, pkl in tqdm(pkls.items()):
+    for cfg, pkl in tqdm(pkls.items()):
         if pkl is None or pkl.profile is None:
+            logging.warning(f"skipping {cfg}")
             continue
         df = pkl.profile
-        df["scen"] = scen[1]
-        df["scentype"] = scen[0]
-        env = polygonal_roadmap.MapfInfoEnvironment(Path(even) / scen[1])
-        df['map'] = env.map_file
+        df["scen"] = cfg[2]
+        df["scentype"] = cfg[1]
+        # env = polygonal_roadmap.MapfInfoEnvironment(Path(even) / scen[1])
+        df['map_file'] = cfg[2].split(cfg[1])[0][:-1]
         # df['config'] = pkl.config
-        df['planner'] = planner_config
+        df['planner'] = cfg[0]
         df['robustness'] = pkl.k
         if hasattr(pkl, 'makespan'):
             df['makespan'] = pkl.makespan
@@ -137,35 +140,35 @@ def run_scenarios(map_file, planner_yml, n_agents=10, index=None, scentype="even
 
 def run_one(planner, result_path=None, config=None):
     data = None
+    ex = polygonal_roadmap.Executor(planner.env, planner)
+    ex.failed = False
     try:
-        ex = polygonal_roadmap.Executor(planner.env, planner)
         print('-----------------')
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
-        data = ex.get_result()
-        print(f'n_agents={len(ex.env.start)}')
-        if ex.history:
-            print(f'took {len(ex.history)} steps to completion')
-            k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
-            print(f'k-robustness with k={k}')
-            data.config = config
-            data.k = k
-            data.makespan = len(ex.history)
-        else:
-            data.k = -1
-            print("run failed")
-        print('-----------------')
-
-        # data.sum_of_cost = pathfinding.sum_of_cost(ex.get_history_as_solution(), ex.env.g, weight="dist")
-        logging.info('done')
     except Exception as e:
-        if result_path is not None:
-            with open(result_path, mode="wb") as results:
-                pickle.dump(data, results)
+        ex.profile.disable()
+        ex.failed = True
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
         if result_path is not None:
             with open(result_path, mode="wb") as results:
                 pickle.dump(data, results)
+        data = ex.get_result()
+        print(f'n_agents={len(ex.env.start)}')
+        if ex.history:
+            print(f'took {len(ex.history)} steps to completion')
+            if not ex.failed:
+                k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+            else:
+                k = -1
+            print(f'k-robustness with k={k}')
+        else:
+            data.k = -1
+        data.config = config
+        data.failed = ex.failed
+        data.k = k
+        data.makespan = len(ex.history)
+        print('-----------------')
