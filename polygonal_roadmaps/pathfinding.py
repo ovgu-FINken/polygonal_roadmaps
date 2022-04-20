@@ -502,6 +502,8 @@ class SpaceTimeAStarCache:
         """try to look up a path from start to goal in the cache with specific contstraints
         if the path was searched before, we will return the path without new computation
         """
+        if start is None:
+            return [], 0
         if (start, goal, node_constraints) in self.cache:
             return self.cache[start, goal, node_constraints]
         try:
@@ -668,10 +670,7 @@ class CBS:
             # we have a cache, so paths with the same preconditions do not have to be calculated twice
             nc = frozenset([(c.node, c.time) for c in node.constraints if c.agent == agent])
             sn, gn = self.start_goal[agent]
-            if sn is None:
-                path, cost = [], 0
-            else:
-                path, cost = self.cache.get_path(sn, gn, node_constraints=nc)
+            path, cost = self.cache.get_path(sn, gn, node_constraints=nc)
             solution.append(path)
             soc += cost
         return solution, soc
@@ -838,7 +837,7 @@ class CDM_CR:
                 goal = self.goals[agent]
                 nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
                 path, cost = self.cache.get_path(start, goal, frozenset(nc))
-                if not path:
+                if not path and start is not None:
                     logging.warning(f"no path found {start} - {goal}")
                     raise nx.NetworkXNoPath
                 costs += cost
@@ -945,7 +944,7 @@ class CDM_CR:
     def compute_qualities(self, options) -> list:
         """compute one quality for each option for each agent"""
         path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
-                      for i, _ in enumerate(self.agents)]
+                      for i, _ in enumerate(self.agents) if self.starts[i] is not None]
         qualities = []
         for o in options:
             qualities.append(self.evaluate_option(o, path_costs=path_costs))
@@ -956,17 +955,21 @@ class CDM_CR:
     def update_state(self, state):
         self.starts = state
         self.cache.reset(state_only=True)
-        # TODO: We may need to update/fix the priority map.
+        # We may need to update/fix the priority map.
+        # currently we don't
+
+        # however: we create constraints from the existing priority map, before starting the planning
+        self.create_constraints_from_prio_map()
 
     def evaluate_option(self, edge, path_costs=None):
         """evaluate giveing priority to a given edge (option)"""
         if path_costs is None:
             path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
-                          for i, _ in enumerate(self.agents)]
+                          for i, _ in enumerate(self.agents) if self.starts[i] is not None]
 
         # delete all edges going to the node $edge[1]
         edges = [e for e in self.priority_map.in_edges(edge[1])]
-        logging.info(f"edes: {edges}")
+        # logging.info(f"edes: {edges}")
         for e in list(edges):
             self.priority_map.remove_edge(*e)
 
@@ -976,7 +979,7 @@ class CDM_CR:
         # compute all paths and their cost
         # if no path is found, cost = np.inf
         new_path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
-                          for i, _ in enumerate(self.agents)]
+                          for i, _ in enumerate(self.agents) if self.starts[i] is not None]
 
         logging.info(f'edge: {edge[0:2]}, old cost: {path_costs}, new cost: {new_path_costs}')
         # compute the difference in path cost

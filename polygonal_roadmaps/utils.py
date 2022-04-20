@@ -161,14 +161,13 @@ def run_one(planner, result_path=None, config=None):
         if ex.history:
             print(f'took {len(ex.history)} steps to completion')
             if not ex.failed:
-                k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+                data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
             else:
-                k = -1
-            print(f'k-robustness with k={k}')
+                data.k = -1
         else:
             data.k = -1
         data.config = config
         data.failed = ex.failed
-        data.k = k
         data.makespan = len(ex.history)
+        print(f'k-robustness with k={data.k}')
         print('-----------------')

@@ -147,14 +147,11 @@ class CBSPlanner(Planner):
             self.cbs.update_state(self.env.state)
         self.cbs.run()
         plans = list(self.cbs.best.solution)
-        # reintroduce plan for those states that have already finished -> i.e., where state is None
-        j = 0
         ret = []
         logging.info(f"state: {self.env.state}")
         for i, s in enumerate(self.env.state):
             if s is not None:
-                ret.append(plans[j] + [None])
-                j += 1
+                ret.append(plans[i] + [None])
             else:
                 ret.append([None])
         ret = zip_longest(*ret, fillvalue=None)
@@ -177,12 +174,11 @@ class CCRPlanner(Planner):
         plans = self.ccr.run()
         # reintroduce plan for those states that have already finished -> i.e., where state is None
         self.history.append({"solution": plans, "priorities": list(zip(self.ccr.priorities_in, self.ccr.priorities))})
-        j = 0
+        logging.info(f'plans: {plans}')
         ret = []
         for i, s in enumerate(self.env.state):
             if s is not None:
-                ret.append(plans[j] + [None])
-                j += 1
+                ret.append(plans[i] + [None])
             else:
                 ret.append([None])
         ret = zip_longest(*ret, fillvalue=None)
