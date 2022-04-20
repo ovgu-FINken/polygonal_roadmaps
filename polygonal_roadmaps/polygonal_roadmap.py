@@ -190,7 +190,7 @@ class CCRPlanner(Planner):
 
 
 class Executor():
-    def __init__(self, environment: Environment, planner: Planner, time_frame: int = None) -> None:
+    def __init__(self, environment: Environment, planner: Planner, time_frame: int = 1000) -> None:
         self.env = environment
         self.planner = planner
         self.history = [self.env.state]
@@ -198,7 +198,7 @@ class Executor():
         self.profile = Profile()
 
     def run(self, profiling=True):
-        if (self.time_frame is not None) and (len(self.history) >= self.time_frame):
+        if len(self.history) >= self.time_frame:
             return
         if profiling:
             self.profile.enable()
