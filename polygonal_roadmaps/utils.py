@@ -42,8 +42,11 @@ def load_results(path=None):
         pkls[planner_config, even, scen] = read_pickle(dings)
     profile_data = []
     for cfg, pkl in tqdm(pkls.items()):
-        if pkl is None or pkl.profile is None:
-            logging.warning(f"skipping {cfg}")
+        if pkl is None:
+            logging.warning(f"skipping {cfg}, pkl is None")
+            continue
+        if pkl.profile is None:
+            logging.warning(f"skipping {cfg}, profile is None")
             continue
         df = pkl.profile
         df["scen"] = cfg[2]
@@ -153,9 +156,6 @@ def run_one(planner, result_path=None, config=None):
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
-        if result_path is not None:
-            with open(result_path, mode="wb") as results:
-                pickle.dump(data, results)
         data = ex.get_result()
         print(f'n_agents={len(ex.env.start)}')
         if ex.history:
@@ -169,5 +169,8 @@ def run_one(planner, result_path=None, config=None):
         data.config = config
         data.failed = ex.failed
         data.makespan = len(ex.history)
+        if result_path is not None:
+            with open(result_path, mode="wb") as results:
+                pickle.dump(data, results)
         print(f'k-robustness with k={data.k}')
         print('-----------------')
