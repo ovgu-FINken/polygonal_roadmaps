@@ -161,6 +161,8 @@ def run_one(planner, result_path=None, config=None):
         data = ex.get_result()
         data.failed = True
         data.k = -1
+        data.makespan = -1
+        data.soc = -1
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
@@ -169,4 +171,5 @@ def run_one(planner, result_path=None, config=None):
             with open(result_path, mode="wb") as results:
                 pickle.dump(data, results)
         print(f'k-robustness with k={data.k}')
+        print("failed" if data.failed else "succeeded")
         print('-----------------')
