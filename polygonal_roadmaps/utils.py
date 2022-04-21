@@ -48,20 +48,26 @@ def load_results(path=None):
         if pkl.profile is None:
             logging.warning(f"skipping {cfg}, profile is None")
             continue
-        df = pkl.profile
+        df = {}
         df["scen"] = cfg[2]
         df["scentype"] = cfg[1]
         # env = polygonal_roadmap.MapfInfoEnvironment(Path(even) / scen[1])
         df['map_file'] = cfg[2].split(cfg[1])[0][:-1]
         # df['config'] = pkl.config
         df['planner'] = cfg[0]
-        df['robustness'] = pkl.k
-        if hasattr(pkl, 'makespan'):
-            df['makespan'] = pkl.makespan
+        df['k'] = pkl.k
         # df['SOC'] = pkl.sum_of_cost
-        profile_data.append(df.loc[df.function.isin(['(astar_path)', '(spacetime_astar)', '(run)', '(nx_shortest)'])])
+        df['sum_of_cost'] = pkl.soc
+        df['failed'] = pkl.failed
+        df['makespan'] = pkl.makespan
+        d = pkl.profile
+        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'),"ncalls"].astype(int).sum()
+        df['spacetime_astar'] = d.loc[d.function.eq('(spacetime_astar)'),"ncalls"].astype(int).sum()
+
+        # df['spacetime_astar'] = 
+        profile_data.append(df)
     if profile_data:
-        profile_df = pd.concat(profile_data, ignore_index=True)
+        profile_df = pd.DataFrame(profile_data)
     else:
         logging.warning("something went wrong, profile data is empty(?)")
         profile_df = pd.DataFrame()
