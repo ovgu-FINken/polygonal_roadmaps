@@ -150,25 +150,21 @@ def run_one(planner, result_path=None, config=None):
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
+        data = ex.get_result()
+        data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
+        data.makespan = len(ex.history)
+        print(f'took {len(ex.history)} steps to completion')
+        data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+        data.failed = False
     except Exception as e:
         ex.profile.disable()
-        ex.failed = True
+        data = ex.get_result()
+        data.failed = True
+        data.k = -1
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
-        data = ex.get_result()
-        print(f'n_agents={len(ex.env.start)}')
-        if ex.history:
-            print(f'took {len(ex.history)} steps to completion')
-            if not ex.failed:
-                data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
-            else:
-                data.k = -1
-        else:
-            data.k = -1
         data.config = config
-        data.failed = ex.failed
-        data.makespan = len(ex.history)
         if result_path is not None:
             with open(result_path, mode="wb") as results:
                 pickle.dump(data, results)

@@ -933,6 +933,9 @@ class CDM_CR:
                     # edge = t-1, t
                     edge = solution[c.agent][c.time - 1:c.time + 1]
                     logging.info(edge)
+                    # this happens if the conflict occurs right at the first time step
+                    if len(edge) < 2:
+                        continue
                     if edge in self.priority_map.edges():
                         continue
                     constraints.append(c)
