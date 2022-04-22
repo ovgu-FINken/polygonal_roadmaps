@@ -156,11 +156,17 @@ def run_one(planner, result_path=None, config=None):
             print(f'{result_path}')
         ex.run()
         data = ex.get_result()
-        data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
-        data.makespan = len(ex.history)
+        if len(ex.history):
+            data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
+            data.makespan = len(ex.history)
+            data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+            data.failed = False
+        else:
+            data.soc = 0
+            data.makespan = 0
+            data.k = -1
+            data.failed = True
         print(f'took {len(ex.history)} steps to completion')
-        data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
-        data.failed = False
     except Exception as e:
         ex.profile.disable()
         data = ex.get_result()
