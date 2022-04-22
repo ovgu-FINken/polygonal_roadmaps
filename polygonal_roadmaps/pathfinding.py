@@ -797,11 +797,13 @@ class CDM_CR:
                  g,
                  starts,
                  goals,
-                 limit=10,
-                 wait_action_cost=1.0001,
-                 weight=None,
-                 k_robustness=1,
-                 pad_paths=False,
+                 limit: int = 10,
+                 wait_action_cost: float = 1.0001,
+                 weight: str = None,
+                 k_robustness: int = 1,
+                 pad_paths: bool = False,
+                 social_reward: float = 0.0,
+                 anti_social_punishment: float = 0.0,
                  discard_conflicts_beyond=None):
         self.discard_conflicts_beyond = discard_conflicts_beyond
         assert len(starts) == len(goals)
@@ -811,7 +813,10 @@ class CDM_CR:
         self.starts = starts
         self.goals = goals
         self.agents = tuple(i for i, _ in enumerate(goals))
-        self.priority_map = g.to_directed()
+        self.social_reward = social_reward
+        self.anti_social_punishment = anti_social_punishment
+        self.g = g.to_directed()
+        self.priority_map = self.g.copy()
         self.priorities = []
         self.priorities_in = []
         self.limit = limit
@@ -899,8 +904,10 @@ class CDM_CR:
         logging.info(f"edes: {edges}")
         for e in list(edges):
             self.priority_map.remove_edge(*e)
+            self.g.edges[e[0], e[1]]["weight"] -= self.anti_social_punishment
 
         # insert $edge
+        self.g.edges[decision[0], decision[1]]["weight"] += self.social_reward + self.anti_social_punishment
         self.priority_map.add_edge(decision[0], decision[1], **decision[2])
         self.priorities.append(decision[1])
         self.priorities_in.append(decision[0])
