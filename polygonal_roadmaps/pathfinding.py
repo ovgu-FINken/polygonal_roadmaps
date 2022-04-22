@@ -969,6 +969,7 @@ class CDM_CR:
         # currently we don't
 
         # however: we create constraints from the existing priority map, before starting the planning
+        self.constraints = []
         self.create_constraints_from_prio_map()
 
     def evaluate_option(self, edge, path_costs=None):
