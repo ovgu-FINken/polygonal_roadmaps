@@ -52,9 +52,8 @@ def load_results(path=None):
         df["scen"] = cfg[2]
         df["scentype"] = cfg[1]
         # env = polygonal_roadmap.MapfInfoEnvironment(Path(even) / scen[1])
-        df['map_file'] = cfg[2].split(cfg[1])[0][:-1]
         # df['config'] = pkl.config
-        df['planner'] = cfg[0]
+        df['planner_file'] = cfg[0]
         df['k'] = pkl.k
         # df['SOC'] = pkl.sum_of_cost
         df['sum_of_cost'] = pkl.soc
@@ -63,7 +62,17 @@ def load_results(path=None):
         d = pkl.profile
         df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'), "ncalls"].astype(int).sum()
         df['spacetime_astar'] = d.loc[d.function.eq('(spacetime_astar)'), "ncalls"].astype(int).sum()
-        df['config'] = pkl.config
+        if pkl.config is None:
+            logging.warn(f'config is None in pkl {cfg[0]}, {cfg[2]}')
+            logging.warn(f'{pkl}')
+        else:
+            print(pkl.config)
+            df['map_file'] = pkl.config['map_file']
+            df['scen'] = pkl.config['scen']
+            df['planner'] = pkl.config['planner']
+            for k, v in pkl.config['planner_args']:
+                df[k] = v
+
         profile_data.append(df)
     if profile_data:
         profile_df = pd.DataFrame(profile_data)
@@ -142,8 +151,8 @@ def run_scenarios(map_file, planner_yml, n_agents=10, index=None, scentype="even
         planner = create_planner_from_config(planner_config, env)
         path = Path('results') / planner_yml / scen
         path.mkdir(parents=True, exist_ok=True)
-        config = planner_config.update({'map': env.map_file, 'scen': scen})
-        run_one(planner, result_path=path / 'result.pkl', config=config)
+        planner_config.update({'map_file': env.map_file, 'scen': scen})
+        run_one(planner, result_path=path / 'result.pkl', config=planner_config)
 
 
 def run_one(planner, result_path=None, config=None):
