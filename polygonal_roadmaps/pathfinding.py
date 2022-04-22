@@ -927,6 +927,9 @@ class CDM_CR:
                 goal = self.goals[agent]
                 nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
                 path, cost = self.cache.get_path(start, goal, frozenset(nc))
+                if path is None:
+                    logging.info("no path left, a solution is not possible")
+                    raise nx.NetworkXNoPath()
                 costs += cost
                 solution.append(path)
 
