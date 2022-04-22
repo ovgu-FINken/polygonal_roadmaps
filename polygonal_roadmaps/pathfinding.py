@@ -904,10 +904,10 @@ class CDM_CR:
         logging.info(f"edes: {edges}")
         for e in list(edges):
             self.priority_map.remove_edge(*e)
-            self.g.edges[e[0], e[1]]["weight"] -= self.anti_social_punishment
+            self.g.edges[e[0], e[1]]["weight"] += self.anti_social_punishment
 
         # insert $edge
-        self.g.edges[decision[0], decision[1]]["weight"] += self.social_reward + self.anti_social_punishment
+        self.g.edges[decision[0], decision[1]]["weight"] += -1 * self.social_reward - self.anti_social_punishment
         self.priority_map.add_edge(decision[0], decision[1], **decision[2])
         self.priorities.append(decision[1])
         self.priorities_in.append(decision[0])
