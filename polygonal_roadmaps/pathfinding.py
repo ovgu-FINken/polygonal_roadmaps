@@ -109,7 +109,7 @@ def pred_to_list(g, pred, start, goal):
 def pad_path(path: list, limit: int = None) -> list:
     if limit is None:
         return path
-    if not len(path):
+    if path is None or not len(path):
         return []
     if limit > len(path):
         return path + [path[-1] for _ in range(limit - len(path))]
