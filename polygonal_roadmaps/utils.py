@@ -57,7 +57,7 @@ def load_results(path=None):
         df['k'] = pkl.k
         # df['SOC'] = pkl.sum_of_cost
         df['sum_of_cost'] = pkl.soc
-        df['failed'] = pkl.failed
+        df['failed'] = pkl.failed or pkl.k <= 0
         df['makespan'] = pkl.makespan
         d = pkl.profile
         df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'), "ncalls"].astype(int).sum()
@@ -66,11 +66,10 @@ def load_results(path=None):
             logging.warn(f'config is None in pkl {cfg[0]}, {cfg[2]}')
             logging.warn(f'{pkl}')
         else:
-            print(pkl.config)
             df['map_file'] = pkl.config['map_file']
             df['scen'] = pkl.config['scen']
             df['planner'] = pkl.config['planner']
-            for k, v in pkl.config['planner_args']:
+            for k, v in pkl.config['planner_args'].items():
                 df[k] = v
 
         profile_data.append(df)
