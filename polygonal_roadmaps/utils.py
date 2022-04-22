@@ -63,6 +63,7 @@ def load_results(path=None):
         d = pkl.profile
         df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'), "ncalls"].astype(int).sum()
         df['spacetime_astar'] = d.loc[d.function.eq('(spacetime_astar)'), "ncalls"].astype(int).sum()
+        df['config'] = pkl.config
         profile_data.append(df)
     if profile_data:
         profile_df = pd.DataFrame(profile_data)
