@@ -897,11 +897,14 @@ class CDM_CR:
         # make the decision
         decision = options[decision_function(qualities)]
         logging.info(f'decision: {decision}')
+        self.implement_decision(decision)
+        # create constraints from priority map
+        return self.create_constraints_from_prio_map()
 
+    def implement_decision(self, decision):
         # update the priority map with the descion
         # delete all edges going to the node $edge[1]
         edges = [e for e in self.priority_map.in_edges(decision[1])]
-        logging.info(f"edes: {edges}")
         for e in list(edges):
             self.priority_map.remove_edge(*e)
             self.g.edges[e[0], e[1]]["weight"] += self.anti_social_punishment
@@ -909,11 +912,16 @@ class CDM_CR:
         # insert $edge
         self.g.edges[decision[0], decision[1]]["weight"] += -1 * self.social_reward - self.anti_social_punishment
         self.priority_map.add_edge(decision[0], decision[1], **decision[2])
+        self.priority_map.edges[decision[0], decision[1]]["weight"] -= self.social_reward
         self.priorities.append(decision[1])
         self.priorities_in.append(decision[0])
 
-        # create constraints from priority map
-        return self.create_constraints_from_prio_map()
+        # recurse, to remove multiplel edges in narrow passages at once
+        # outgoing edge
+        if len(self.g.out_edges(nbunch=decision[1])) == 1:
+            self.implement_decision(self.g.out_edges(nbunch=decision[1], data=True))
+        if len(self.g.in_edges(nbunch=decision[0])) == 1:
+            self.implement_decision(self.g.in_edges(nbunch=decision[0], data=True))
 
     def create_constraints_from_prio_map(self):
         # for each conflict, check which agent goes against prioritymap and update path accordingly

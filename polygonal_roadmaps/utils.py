@@ -66,7 +66,6 @@ def load_results(path=None):
             logging.warn(f'config is None in pkl {cfg[0]}, {cfg[2]}')
             logging.warn(f'{pkl}')
         else:
-            df['map_file'] = pkl.config['map_file']
             df['scen'] = pkl.config['scen']
             df['planner'] = pkl.config['planner']
             for k, v in pkl.config['planner_args'].items():
