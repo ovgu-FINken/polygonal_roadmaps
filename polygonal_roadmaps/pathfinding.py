@@ -770,6 +770,16 @@ class CBS:
         return h
 
 
+def check_nodes_connected(graph, paths):
+    for p in paths:
+        for e in zip(p[:-1], p[1:]):
+            if e[0] == e[1]:
+                continue
+            if e not in graph.edges():
+                return False
+    return True
+
+
 def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None):
     solution = []
     if weight is None:
@@ -909,8 +919,9 @@ class CDM_CR:
             self.priority_map.remove_edge(*e)
             self.g.edges[e[0], e[1]]["weight"] += self.anti_social_punishment
 
-        # insert $edge
+        # social reward only affects the global grap, we have to deduct the anti-social before
         self.g.edges[decision[0], decision[1]]["weight"] += -1 * self.social_reward - self.anti_social_punishment
+        # insert $edge
         self.priority_map.add_edge(decision[0], decision[1], **decision[2])
         self.priority_map.edges[decision[0], decision[1]]["weight"] -= self.social_reward
         self.priorities.append(decision[1])

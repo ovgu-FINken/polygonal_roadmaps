@@ -67,6 +67,7 @@ def load_results(path=None):
             logging.warn(f'{pkl}')
         else:
             df['scen'] = pkl.config['scen']
+            df['map_file'] = pkl.config['map_file']
             df['planner'] = pkl.config['planner']
             for k, v in pkl.config['planner_args'].items():
                 df[k] = v

@@ -22,6 +22,10 @@ class TestPlanningExecution(unittest.TestCase):
                                 msg="Path should be k-robust with k>=1")
         self.assertEqual(len(planner.env.start), len(executor.history[0]))
         self.assertEqual(len(planner.env.start), len(executor.history[-1]))
+        paths = executor.get_history_as_solution()
+        for i, g in enumerate(executor.env.goal):
+            paths[i].append(g)
+        self.assertTrue(pathfinding.check_nodes_connected(executor.env.g, paths))
 
     def testMinimalEnvironment(self):
         g = nx.from_edgelist([(1, 2), (2, 3), (1, 3), (1, 4)])
@@ -55,4 +59,8 @@ class TestPlanningExecution(unittest.TestCase):
 
     def testPlanningCCRPlanner(self):
         planner = polygonal_roadmap.CCRPlanner(self.env, limit=100)
+        self.checkPlanner(planner)
+
+    def testPlanningCCRPlannerHSA(self):
+        planner = polygonal_roadmap.CCRPlanner(self.env, limit=100, horizon=3, discard_conflicts_beyond=3, social_reward=0.1, anti_social_punishment=0.1)
         self.checkPlanner(planner)
