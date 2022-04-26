@@ -204,6 +204,11 @@ def run_one(planner, result_path=None, config=None):
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
+        # reset resource limit before saving results (we don't want to trigger this during result)
+        _, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
+        _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
+        resource.setrlimit(resource.RLIMIT_CPU, (hardlimit, hardlimit))
         data = ex.get_result()
         data.failed = ex.failed
         if not ex.failed and len(ex.history):
