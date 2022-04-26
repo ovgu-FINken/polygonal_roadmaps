@@ -5,6 +5,7 @@ import io
 import pstats
 import logging
 import glob
+import resource
 from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import polygonal_roadmap
@@ -120,6 +121,13 @@ def run_all(args):
     if args.loglevel is not None:
         numeric_level = getattr(logging, args.loglevel.upper(), None)
         logging.basicConfig(level=numeric_level, filename=args.logfile)
+    if args.memlimit is not None:
+        # set memlimit, arg is in GB
+        softlimit, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
+        logging.info(f"sl: {softlimit}, hl: {hardlimit}")
+        limit = args.memlimit << (10 * 3)
+        logging.info(f"set memlimit to {args.memlimit}Gb == {limit}b")
+        resource.setrlimit(resource.RLIMIT_AS, (limit, hardlimit))
     for planner in args.planner:
         for map_file in args.maps:
             run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index, scentype=args.scentype)
