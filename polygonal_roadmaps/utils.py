@@ -196,29 +196,27 @@ def run_one(planner, result_path=None, config=None):
             print(f'{result_path}')
         ex.run()
         ex.failed = False
-    except (MemoryError, TimeoutError) as e:
+    except (MemoryError, TimeoutError):
+        print("out of computational resources")
         ex.profile.disable()
-        data.k = -1
-        data.makespan = -1
-        data.soc = -1
-        raise e
     except Exception as e:
         ex.profile.disable()
-        data.k = -1
-        data.makespan = -1
-        data.soc = -1
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
         data = ex.get_result()
         data.failed = ex.failed
+        if ex.failed:
+            data.k = -1
+            data.makespan = -1
+            data.soc = -1
         if len(ex.history):
             data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
             data.makespan = len(ex.history)
             data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
         else:
-            data.soc = 0
-            data.makespan = 0
+            data.soc = -1
+            data.makespan = -1
             data.k = -1
         print(f'took {len(ex.history)} steps to completion')
         data.config = config
