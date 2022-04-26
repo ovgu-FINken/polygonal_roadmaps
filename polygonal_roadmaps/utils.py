@@ -179,6 +179,12 @@ def run_one(planner, result_path=None, config=None):
             print(f'{result_path}')
         ex.run()
         ex.failed = False
+    except MemoryError as e:
+        ex.profile.disable()
+        data.k = -1
+        data.makespan = -1
+        data.soc = -1
+        raise e
     except Exception as e:
         ex.profile.disable()
         data.k = -1
