@@ -13,6 +13,10 @@ from polygonal_roadmaps import polygonal_roadmap
 from polygonal_roadmaps import pathfinding
 
 
+def TimeoutError(Exception):
+    pass
+
+
 def read_pickle(location):
     try:
         with open(location, 'rb') as pklfile:
@@ -118,9 +122,9 @@ def create_df_from_profile(profile):
     return df
 
 
-def raise_keyboard_interrupt(number, _):
-    logging.warning(f"raising Keyboard interrupt because of signal {number}")
-    raise KeyboardInterrupt()
+def raise_timeout(number, _):
+    logging.warning(f"raising exception because of signal {number}")
+    raise TimeoutError()
 
 
 def run_all(args):
@@ -128,8 +132,8 @@ def run_all(args):
 
     # set signal handelrs for sigterm, sigxcpu
     # this is needed to return on cluster signals and for setting CPU-time limit
-    signal.signal(signal.SIGXCPU, raise_keyboard_interrupt)
-    signal.signal(signal.SIGTERM, raise_keyboard_interrupt)
+    signal.signal(signal.SIGXCPU, raise_timeout)
+    signal.signal(signal.SIGTERM, raise_timeout)
 
     if args.loglevel is not None:
         numeric_level = getattr(logging, args.loglevel.upper(), None)
@@ -192,7 +196,7 @@ def run_one(planner, result_path=None, config=None):
             print(f'{result_path}')
         ex.run()
         ex.failed = False
-    except MemoryError as e:
+    except (MemoryError, TimeoutError) as e:
         ex.profile.disable()
         data.k = -1
         data.makespan = -1
