@@ -206,11 +206,7 @@ def run_one(planner, result_path=None, config=None):
     finally:
         data = ex.get_result()
         data.failed = ex.failed
-        if ex.failed:
-            data.k = -1
-            data.makespan = -1
-            data.soc = -1
-        if len(ex.history):
+        if not ex.failed and len(ex.history):
             data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
             data.makespan = len(ex.history)
             data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
