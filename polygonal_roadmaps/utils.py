@@ -133,7 +133,7 @@ def run_all(args):
         softlimit, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
         logging.info(f"sl: {softlimit}, hl: {hardlimit}")
         limit = args.timelimit * 60
-        logging.info(f"set memlimit to {args.limit}min == {limit}s")
+        logging.info(f"set memlimit to {args.timelimit}min == {limit}s")
         resource.setrlimit(resource.RLIMIT_CPU, (limit, hardlimit))
     for planner in args.planner:
         for map_file in args.maps:
