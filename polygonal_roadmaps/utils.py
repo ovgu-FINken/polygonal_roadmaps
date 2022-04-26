@@ -1,4 +1,5 @@
 import pandas as pd
+import signal
 import yaml
 import pickle
 import io
@@ -117,7 +118,19 @@ def create_df_from_profile(profile):
     return df
 
 
+def raise_keyboard_interrupt(number, _):
+    logging.warning(f"raising Keyboard interrupt because of signal {number}")
+    raise KeyboardInterrupt()
+
+
 def run_all(args):
+    # run all jobs specified by args
+
+    # set signal handelrs for sigterm, sigxcpu
+    # this is needed to return on cluster signals and for setting CPU-time limit
+    signal.signal(signal.SIGXCPU, raise_keyboard_interrupt)
+    signal.signal(signal.SIGTERM, raise_keyboard_interrupt)
+
     if args.loglevel is not None:
         numeric_level = getattr(logging, args.loglevel.upper(), None)
         logging.basicConfig(level=numeric_level, filename=args.logfile)
