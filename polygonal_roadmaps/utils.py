@@ -13,7 +13,7 @@ from polygonal_roadmaps import polygonal_roadmap
 from polygonal_roadmaps import pathfinding
 
 
-def TimeoutError(Exception):
+class TimeoutError(Exception):
     pass
 
 
