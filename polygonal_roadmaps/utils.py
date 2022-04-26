@@ -128,6 +128,13 @@ def run_all(args):
         limit = args.memlimit << (10 * 3)
         logging.info(f"set memlimit to {args.memlimit}Gb == {limit}b")
         resource.setrlimit(resource.RLIMIT_AS, (limit, hardlimit))
+    if args.timelimit is not None:
+        # set memlimit, arg is in GB
+        softlimit, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
+        logging.info(f"sl: {softlimit}, hl: {hardlimit}")
+        limit = args.timelimit * 60
+        logging.info(f"set memlimit to {args.limit}min == {limit}s")
+        resource.setrlimit(resource.RLIMIT_CPU, (limit, hardlimit))
     for planner in args.planner:
         for map_file in args.maps:
             run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index, scentype=args.scentype)
@@ -165,34 +172,32 @@ def run_scenarios(map_file, planner_yml, n_agents=10, index=None, scentype="even
 def run_one(planner, result_path=None, config=None):
     data = None
     ex = polygonal_roadmap.Executor(planner.env, planner)
-    ex.failed = False
+    ex.failed = True
     try:
         print('-----------------')
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
-        data = ex.get_result()
-        if len(ex.history):
-            data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
-            data.makespan = len(ex.history)
-            data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
-            data.failed = False
-        else:
-            data.soc = 0
-            data.makespan = 0
-            data.k = -1
-            data.failed = True
-        print(f'took {len(ex.history)} steps to completion')
+        ex.failed = False
     except Exception as e:
         ex.profile.disable()
-        data = ex.get_result()
-        data.failed = True
         data.k = -1
         data.makespan = -1
         data.soc = -1
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
+        data = ex.get_result()
+        data.failed = ex.failed
+        if len(ex.history):
+            data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
+            data.makespan = len(ex.history)
+            data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+        else:
+            data.soc = 0
+            data.makespan = 0
+            data.k = -1
+        print(f'took {len(ex.history)} steps to completion')
         data.config = config
         if result_path is not None:
             with open(result_path, mode="wb") as results:
