@@ -223,10 +223,12 @@ def run_one(planner, result_path=None, config=None):
             data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
             data.makespan = len(ex.history)
             data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+            data.steps = sum([len(p) for p in ex.get_history_as_solution()])
         else:
             data.soc = -1
             data.makespan = -1
             data.k = -1
+            data.steps = -1
         print(f'took {len(ex.history)} steps to completion')
         data.config = config
         if result_path is not None:
