@@ -957,7 +957,7 @@ class CDM_CR:
             # find conflicts
             recompute_needed = False
             conflicts = self.find_conflicts(solution)
-            for conflict in conflicts:
+            for conflict in sorted(conflicts, key=lambda x: x.conflicting_agents[0].time):
                 # find out if conflict involves node with priorities
                 for c in conflict.conflicting_agents:
                     logging.info(c)
