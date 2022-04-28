@@ -4,3 +4,4 @@ planner_args:
   discard_conflicts_beyond: 3
   horizon: 3
   weight: 'dist'
+  max_iter: 1_000_000

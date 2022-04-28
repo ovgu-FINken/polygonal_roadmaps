@@ -544,6 +544,7 @@ class CBS:
                  limit=10, max_iter=10000,
                  pad_paths=True,
                  k_robustness=1,
+                 repair_solutions=False,
                  wait_action_cost=1.0001,
                  discard_conflicts_beyond=None):
         self.start_goal = start_goal
@@ -552,6 +553,7 @@ class CBS:
                 raise nx.NodeNotFound()
         self.pad_paths = pad_paths
         self.g = g
+        self.repair_solutions = repair_solutions
         compute_normalized_weight(self.g, weight)
         self.limit = limit
         self.agent_constraints = agent_constraints
@@ -587,7 +589,7 @@ class CBS:
         self.best = None
         self.open = []
         self.evaluate_node(self.root)
-        if self.best is None:
+        if self.best is None and self.repair_solutions:
             self.repair_node_solution(self.root)
         self.push(self.root)
 

@@ -24,6 +24,14 @@ def read_pickle(location):
         return pkl
     except FileNotFoundError:
         logging.warning(f'File {location} not found')
+    except pickle.UnpicklingError:
+        logging.warning(f'could not upnpickle {location}')
+    except MemoryError:
+        logging.warning(f'MemoryError while unpickle {location}')
+    except EOFError:
+        logging.warning(f'EOF while unpickle {location}')
+    except TypeError:
+        logging.warning(f'Type Error while unpickle {location}')
     return polygonal_roadmap.RunResult([], None, {})
 
 
@@ -63,7 +71,7 @@ def load_results(path=None):
         df['k'] = pkl.k
         # df['SOC'] = pkl.sum_of_cost
         df['sum_of_cost'] = pkl.soc
-        df['failed'] = pkl.failed or pkl.k <= 0
+        df['failed'] = pkl.failed
         df['makespan'] = pkl.makespan
         d = pkl.profile
         df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'), "ncalls"].astype(int).sum()
