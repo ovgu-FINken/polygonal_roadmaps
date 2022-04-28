@@ -782,19 +782,23 @@ def check_nodes_connected(graph, paths):
     return True
 
 
-def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None):
+def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None, discard_conflicts_beyond=None):
     solution = []
     if weight is None:
         weight = "dist"
     compute_normalized_weight(graph, weight)
+    pad_limit = limit
+    if not pad_paths:
+        pad_limit = None
+    if discard_conflicts_beyond is not None:
+        pad_limit = discard_conflicts_beyond
     for start, goal in start_goal:
-        if pad_paths:
-            node_occupancy = compute_node_occupancy(solution, limit=limit)
-        else:
-            node_occupancy = compute_node_occupancy(solution, limit=None)
+        node_occupancy = compute_node_occupancy(solution, limit=pad_limit)
         constraints = set()
         for t, node in node_occupancy.keys():
             if t > 0:
+                if discard_conflicts_beyond is not None and t > discard_conflicts_beyond:
+                    continue
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         logging.debug(constraints)
