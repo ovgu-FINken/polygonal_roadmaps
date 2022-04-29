@@ -807,7 +807,7 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         logging.debug(constraints)
-        path, _ = cache.get_path(graph, start, goal, node_constraints=constraints)
+        path, _ = cache.get_path(start, goal, node_constraints=frozenset(constraints))
         if path is None:
             raise nx.NetworkXNoPath
         solution.append(path)
