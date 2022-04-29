@@ -74,7 +74,7 @@ def load_results(path=None):
         df['failed'] = pkl.failed
         df['makespan'] = pkl.makespan
         d = pkl.profile
-        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'), "ncalls"].astype(int).sum()
+        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(shortest_path_length)'), "ncalls"].astype(int).sum()
         df['spacetime_astar'] = d.loc[d.function.eq('(spacetime_astar)'), "ncalls"].astype(int).sum()
         if pkl.config is None:
             logging.warn(f'config is None in pkl {cfg[0]}, {cfg[2]}')
@@ -206,6 +206,10 @@ def run_one(planner, result_path=None, config=None):
         ex.failed = False
     except (MemoryError, TimeoutError):
         print("out of computational resources")
+        _, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
+        _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
+        resource.setrlimit(resource.RLIMIT_CPU, (hardlimit, hardlimit))
         ex.profile.disable()
     except Exception as e:
         ex.profile.disable()
@@ -213,10 +217,6 @@ def run_one(planner, result_path=None, config=None):
         raise e
     finally:
         # reset resource limit before saving results (we don't want to trigger this during result)
-        _, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
-        resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
-        _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
-        resource.setrlimit(resource.RLIMIT_CPU, (hardlimit, hardlimit))
         data = ex.get_result()
         data.failed = ex.failed
         if not ex.failed and len(ex.history):

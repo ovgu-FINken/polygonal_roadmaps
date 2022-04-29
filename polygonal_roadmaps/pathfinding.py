@@ -782,7 +782,12 @@ def check_nodes_connected(graph, paths):
     return True
 
 
-def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None, discard_conflicts_beyond=None):
+def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None, discard_conflicts_beyond=None, wait_action_cost=1.0001):
+    spacetime_kwargs = {
+        'wait_action_cost': wait_action_cost,
+        'limit': limit,
+    }
+    cache = SpaceTimeAStarCache(graph, kwargs=spacetime_kwargs)
     solution = []
     if weight is None:
         weight = "dist"
@@ -802,8 +807,9 @@ def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         logging.debug(constraints)
-        path, _ = spacetime_astar(graph, start, goal,
-                                  limit=limit, node_constraints=constraints)
+        path, _ = cache.get_path(graph, start, goal, node_constraints=constraints)
+        if path is None:
+            raise nx.NetworkXNoPath
         solution.append(path)
     return solution
 
