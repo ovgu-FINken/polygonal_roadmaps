@@ -544,6 +544,7 @@ class CBS:
                  limit=10, max_iter=10000,
                  pad_paths=True,
                  k_robustness=1,
+                 repair_solutions=False,
                  wait_action_cost=1.0001,
                  discard_conflicts_beyond=None):
         self.start_goal = start_goal
@@ -552,6 +553,7 @@ class CBS:
                 raise nx.NodeNotFound()
         self.pad_paths = pad_paths
         self.g = g
+        self.repair_solutions = repair_solutions
         compute_normalized_weight(self.g, weight)
         self.limit = limit
         self.agent_constraints = agent_constraints
@@ -587,7 +589,7 @@ class CBS:
         self.best = None
         self.open = []
         self.evaluate_node(self.root)
-        if self.best is None:
+        if self.best is None and self.repair_solutions:
             self.repair_node_solution(self.root)
         self.push(self.root)
 
@@ -780,24 +782,34 @@ def check_nodes_connected(graph, paths):
     return True
 
 
-def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None):
+def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None, discard_conflicts_beyond=None, wait_action_cost=1.0001):
+    spacetime_kwargs = {
+        'wait_action_cost': wait_action_cost,
+        'limit': limit,
+    }
+    cache = SpaceTimeAStarCache(graph, kwargs=spacetime_kwargs)
     solution = []
     if weight is None:
         weight = "dist"
     compute_normalized_weight(graph, weight)
+    pad_limit = limit
+    if not pad_paths:
+        pad_limit = None
+    if discard_conflicts_beyond is not None:
+        pad_limit = discard_conflicts_beyond
     for start, goal in start_goal:
-        if pad_paths:
-            node_occupancy = compute_node_occupancy(solution, limit=limit)
-        else:
-            node_occupancy = compute_node_occupancy(solution, limit=None)
+        node_occupancy = compute_node_occupancy(solution, limit=pad_limit)
         constraints = set()
         for t, node in node_occupancy.keys():
             if t > 0:
+                if discard_conflicts_beyond is not None and t > discard_conflicts_beyond:
+                    continue
                 constraints.add((node, t))
                 constraints.add((node, t + 1))
         logging.debug(constraints)
-        path, _ = spacetime_astar(graph, start, goal,
-                                  limit=limit, node_constraints=constraints)
+        path, _ = cache.get_path(start, goal, node_constraints=frozenset(constraints))
+        if path is None:
+            raise nx.NetworkXNoPath
         solution.append(path)
     return solution
 
@@ -955,7 +967,7 @@ class CDM_CR:
             # find conflicts
             recompute_needed = False
             conflicts = self.find_conflicts(solution)
-            for conflict in sorted(conflicts, key=lambda x: x.conflicting_agents[0].time):
+            for conflict in sorted(conflicts, key=lambda x: iter(x.conflicting_agents).__next__().time):
                 # find out if conflict involves node with priorities
                 for c in conflict.conflicting_agents:
                     logging.info(c)

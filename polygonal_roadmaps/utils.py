@@ -24,6 +24,14 @@ def read_pickle(location):
         return pkl
     except FileNotFoundError:
         logging.warning(f'File {location} not found')
+    except pickle.UnpicklingError:
+        logging.warning(f'could not upnpickle {location}')
+    except MemoryError:
+        logging.warning(f'MemoryError while unpickle {location}')
+    except EOFError:
+        logging.warning(f'EOF while unpickle {location}')
+    except TypeError:
+        logging.warning(f'Type Error while unpickle {location}')
     return polygonal_roadmap.RunResult([], None, {})
 
 
@@ -63,10 +71,10 @@ def load_results(path=None):
         df['k'] = pkl.k
         # df['SOC'] = pkl.sum_of_cost
         df['sum_of_cost'] = pkl.soc
-        df['failed'] = pkl.failed or pkl.k <= 0
+        df['failed'] = pkl.failed
         df['makespan'] = pkl.makespan
         d = pkl.profile
-        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(nx_shortest)'), "ncalls"].astype(int).sum()
+        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(shortest_path_length)'), "ncalls"].astype(int).sum()
         df['spacetime_astar'] = d.loc[d.function.eq('(spacetime_astar)'), "ncalls"].astype(int).sum()
         if pkl.config is None:
             logging.warn(f'config is None in pkl {cfg[0]}, {cfg[2]}')
@@ -198,6 +206,10 @@ def run_one(planner, result_path=None, config=None):
         ex.failed = False
     except (MemoryError, TimeoutError):
         print("out of computational resources")
+        _, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
+        resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
+        _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
+        resource.setrlimit(resource.RLIMIT_CPU, (hardlimit, hardlimit))
         ex.profile.disable()
     except Exception as e:
         ex.profile.disable()
@@ -205,20 +217,18 @@ def run_one(planner, result_path=None, config=None):
         raise e
     finally:
         # reset resource limit before saving results (we don't want to trigger this during result)
-        _, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
-        resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
-        _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
-        resource.setrlimit(resource.RLIMIT_CPU, (hardlimit, hardlimit))
         data = ex.get_result()
         data.failed = ex.failed
         if not ex.failed and len(ex.history):
             data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
             data.makespan = len(ex.history)
             data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+            data.steps = sum([len(p) for p in ex.get_history_as_solution()])
         else:
             data.soc = -1
             data.makespan = -1
             data.k = -1
+            data.steps = -1
         print(f'took {len(ex.history)} steps to completion')
         data.config = config
         if result_path is not None:
