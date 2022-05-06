@@ -86,8 +86,20 @@ class MapfInfoEnvironment(Environment):
 
 
 class RoadmapEnvironment(Environment):
-    def __init__(self, map, start_positions, goal_positions, grid):
-        self.g = geometry.create_graph(None)
+    def __init__(self, map_path, start_positions, goal_positions, generator_points=None, wx=None, wy=None, offset=0.15):
+        _, obstacles = geometry.read_obstacles(map_path)
+        if wx is None:
+            wx = (-1, 3.5)
+        if wy is None:
+            wy = (-3, 1.5)
+        if generator_points is None:
+            generator_points = geometry.square_tiling(1.0, working_area_x=wx, working_area_y=wy)
+        graph = geometry.create_graph(generator_points,
+                                      working_area_x=wx,
+                                      working_area_y=wy,
+                                      offset=offset,
+                                      occupied_space=obstacles)
+        super().__init__(graph, start_positions, goal_positions)
 
 
 class Planner():

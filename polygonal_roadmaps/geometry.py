@@ -36,7 +36,7 @@ def create_graph(generator_points: np.array,
                  working_area_x=(0.0, 1.0),
                  working_area_y=(0.0, 1.0),
                  offset: float = 0.02,
-                 occupied_space=None):
+                 occupied_space=None) -> nx.Graph:
     limits = polygon_from_limits(working_area_x, working_area_y)
     if occupied_space is not None:
         limits = limits.difference(occupied_space)
@@ -201,7 +201,7 @@ def read_obstacles(file_name):
     return shapely.ops.unary_union(free), shapely.ops.unary_union(obstacles)
 
 
-def gen_graph_nx(nodes, edges):
+def gen_graph_nx(nodes, edges) -> nx.Graph:
     g = nx.Graph()
     for i, n in enumerate(nodes):
         g.add_node(i, pos=(n.center.x, n.center.y), traversable=n.inner is not None, geometry=n)

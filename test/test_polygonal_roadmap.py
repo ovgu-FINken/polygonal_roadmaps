@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 import networkx as nx
-from polygonal_roadmaps import pathfinding, polygonal_roadmap
+from polygonal_roadmaps import pathfinding, polygonal_roadmap, geometry
 
 
 class TestPlanningExecution(unittest.TestCase):
@@ -39,6 +39,25 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertListEqual(executor.history, [(1, 2)])
         executor.run()
         self.assertListEqual(executor.history, [(1, 2), (None, 1), (None, None)])
+
+    def testRoadmapEnvironment(self):
+        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "icra2021_map.yaml"
+        wx = (-1, 3.5)
+        wy = (-3, 1.5)
+        generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
+        env = polygonal_roadmap.RoadmapEnvironment(map_path, [27, 64], [64, 27], generator_points=generators, wx=wx, wy=wy, offset=0.15)
+        planner = polygonal_roadmap.PrioritizedPlanner(env)
+        executor = polygonal_roadmap.Executor(env, planner, time_frame=50)
+        executor.run()
+        self.assertGreaterEqual(pathfinding.compute_solution_robustness(executor.get_history_as_solution()),
+                                1,
+                                msg="Path should be k-robust with k>=1")
+        self.assertEqual(len(planner.env.start), len(executor.history[0]))
+        self.assertEqual(len(planner.env.start), len(executor.history[-1]))
+        paths = executor.get_history_as_solution()
+        for i, g in enumerate(executor.env.goal):
+            paths[i].append(g)
+        self.assertTrue(pathfinding.check_nodes_connected(executor.env.g, paths))
 
     def testMapfInfoEnvironment(self):
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
