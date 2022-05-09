@@ -23,8 +23,6 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertEqual(len(planner.env.start), len(executor.history[0]))
         self.assertEqual(len(planner.env.start), len(executor.history[-1]))
         paths = executor.get_history_as_solution()
-        for i, g in enumerate(executor.env.goal):
-            paths[i].append(g)
         self.assertTrue(pathfinding.check_nodes_connected(executor.env.g, paths))
 
     def testMinimalEnvironment(self):
@@ -55,8 +53,6 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertEqual(len(planner.env.start), len(executor.history[0]))
         self.assertEqual(len(planner.env.start), len(executor.history[-1]))
         paths = executor.get_history_as_solution()
-        for i, g in enumerate(executor.env.goal):
-            paths[i].append(g)
         self.assertTrue(pathfinding.check_nodes_connected(executor.env.g, paths))
 
     def testMapfInfoEnvironment(self):

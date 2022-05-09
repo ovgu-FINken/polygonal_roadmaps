@@ -778,6 +778,7 @@ def check_nodes_connected(graph, paths):
             if e[0] == e[1]:
                 continue
             if e not in graph.edges():
+                logging.warning(f"edge {e} not in graph, for path {p}")
                 return False
     return True
 

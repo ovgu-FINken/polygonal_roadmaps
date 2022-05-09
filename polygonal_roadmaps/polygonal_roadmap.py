@@ -252,8 +252,8 @@ class Executor():
             for i, s in enumerate(state):
                 if s is not None:
                     solution[i].append(s)
-            for i, g in enumerate(self.env.goal):
-                solution[i].append(g)
+        for i, g in enumerate(self.env.goal):
+            solution[i].append(g)
         return solution
 
     def get_result(self):
