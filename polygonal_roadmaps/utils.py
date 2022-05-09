@@ -165,6 +165,12 @@ def run_all(args):
             run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index, scentype=args.scentype)
 
 
+def create_planner_from_config_file(config_file, env):
+    with open(config_file) as stream:
+        planner_config = yaml.safe_load(stream)
+    return create_planner_from_config(planner_config, env)
+
+
 def create_planner_from_config(config, env):
     if config['planner'] == 'CBS':
         return polygonal_roadmap.CBSPlanner(env, **config['planner_args'])
@@ -176,14 +182,15 @@ def create_planner_from_config(config, env):
 
 
 def run_scenarios(map_file, planner_yml, n_agents=10, index=None, scentype="even"):
-    with open(Path("benchmark") / 'planner_config' / planner_yml) as stream:
-        planner_config = yaml.safe_load(stream)
     if index is None:
         scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
         # strip path from scenario
         scenarios = ['{scentype}/' + s.split('/')[-1] for s in scenarios]
     else:
         scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
+    planner_file = Path("benchmark") / 'planner_config' / planner_yml
+    with open(planner_file) as stream:
+        planner_config = yaml.safe_load(stream)
     for scen in scenarios:
         env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents)
 
