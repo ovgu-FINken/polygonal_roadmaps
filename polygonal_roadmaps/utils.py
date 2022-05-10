@@ -74,7 +74,8 @@ def load_results(path=None):
         df['failed'] = pkl.failed
         df['makespan'] = pkl.makespan
         d = pkl.profile
-        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') | d.function.eq('(shortest_path_length)'), "ncalls"].astype(int).sum()
+        df['spatial_astar'] = d.loc[d.function.eq('(astar_path)') |
+                                    d.function.eq('(shortest_path_length)'), "ncalls"].astype(int).sum()
         df['spacetime_astar'] = d.loc[d.function.eq('(spacetime_astar)'), "ncalls"].astype(int).sum()
         if pkl.config is None:
             logging.warn(f'config is None in pkl {cfg[0]}, {cfg[2]}')

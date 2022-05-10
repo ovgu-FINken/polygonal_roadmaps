@@ -18,7 +18,13 @@ class TestPlanningExecution(unittest.TestCase):
         wx = (-1, 3.5)
         wy = (-3, 1.5)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        self.envs.append(polygonal_roadmap.RoadmapEnvironment(map_path, [27, 64], [64, 27], generator_points=generators, wx=wx, wy=wy, offset=0.15))
+        self.envs.append(polygonal_roadmap.RoadmapEnvironment(map_path,
+                                                              [27, 64],
+                                                              [64, 27],
+                                                              generator_points=generators,
+                                                              wx=wx,
+                                                              wy=wy,
+                                                              offset=0.15))
 
     def checkPlanner(self, Planner, *args, **kwargs):
         for env in self.envs:
@@ -49,11 +55,7 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertListEqual(executor.history, [(1, 2), (None, 1), (None, None)])
 
     def testRoadmapEnvironment(self):
-        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "icra2021_map.yaml"
-        wx = (-1, 3.5)
-        wy = (-3, 1.5)
-        generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        env = polygonal_roadmap.RoadmapEnvironment(map_path, [27, 64], [64, 27], generator_points=generators, wx=wx, wy=wy, offset=0.15)
+        env = self.envs[1]
         planner = polygonal_roadmap.PrioritizedPlanner(env)
         executor = polygonal_roadmap.Executor(env, planner, time_frame=50)
         executor.run()
@@ -80,7 +82,7 @@ class TestPlanningExecution(unittest.TestCase):
         self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100)
 
     def testPlanningWithPrioritizedPlannerHorizon(self):
-        self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=5, horizon=5)
+        self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=10, horizon=10)
 
     def testPlanningCCRPlanner(self):
         self.checkPlanner(polygonal_roadmap.CCRPlanner, limit=100)
