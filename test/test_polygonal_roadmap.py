@@ -53,6 +53,10 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertListEqual(executor.history, [(1, 2)])
         executor.run()
         self.assertListEqual(executor.history, [(1, 2), (None, 1), (None, None)])
+        executor.history = [(1, 2, 3), (1, 2, 3), (1, 2, 4), (1, 3, 4), (0, 3, 5)]
+        partial_solution = executor.get_partial_solution()
+        expected_solution = [[1, 0], [2], [3, 4, 5]]
+        self.assertListEqual(partial_solution, expected_solution)
 
     def testRoadmapEnvironment(self):
         env = self.envs[1]
