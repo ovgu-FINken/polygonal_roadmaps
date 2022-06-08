@@ -783,7 +783,14 @@ def check_nodes_connected(graph, paths):
     return True
 
 
-def prioritized_plans(graph, start_goal, constraints=frozenset(), limit=10, pad_paths=True, weight=None, discard_conflicts_beyond=None, wait_action_cost=1.0001):
+def prioritized_plans(graph,
+                      start_goal,
+                      constraints=frozenset(),
+                      limit=10,
+                      pad_paths=True,
+                      weight=None,
+                      discard_conflicts_beyond=None,
+                      wait_action_cost=1.0001):
     spacetime_kwargs = {
         'wait_action_cost': wait_action_cost,
         'limit': limit,

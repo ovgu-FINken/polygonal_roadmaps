@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from polygonal_roadmaps import pathfinding
 from polygonal_roadmaps import geometry
 from polygonal_roadmaps import utils
-from itertools import zip_longest
+from itertools import zip_longest, groupby
 import networkx as nx
 import numpy as np
 from pathlib import Path
@@ -255,6 +255,28 @@ class Executor():
         for i, g in enumerate(self.env.goal):
             solution[i].append(g)
         return solution
+
+    def get_partial_solution(self):
+        solution = self.get_history_as_solution()
+        # create precedence constraints
+        node_visits = {}
+        for robot, plan in enumerate(solution):
+            for t, node in enumerate(plan):
+                if node not in node_visits:
+                    node_visits[node] = [(t, robot)]
+                else:
+                    node_visits[node].append((t, robot))
+        for k in node_visits.keys():
+            node_visits[k] = [robot for _, robot in sorted(node_visits[k], key=lambda x: x[0])]
+            node_visits[k] = [x[0] for x in groupby(node_visits[k])]
+
+        # snip solution
+        partial_solution = [[s[0]] for s in solution]
+        for robot, plan in enumerate(solution):
+            for node in plan[1:]:
+                if node_visits[node][0] == robot and partial_solution[robot][-1] != node:
+                    partial_solution[robot].append(node)
+        return partial_solution
 
     def get_result(self):
         return RunResult(
