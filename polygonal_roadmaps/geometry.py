@@ -161,8 +161,8 @@ def path_from_positions(g, start, goal):
     return pathfinding.spatial_astar(g, sn, gn)
 
 
-def convert_coordinates(poly, resolution: float, oX: float, oY: float):
-    poly = poly * resolution + np.array([oX + 0.025, oY + 1.45])
+def convert_coordinates(poly, resolution: float, oX: float, oY: float, width: float=0):
+    poly = poly * resolution + np.array([oX, oY])
     poly[:, 1] *= -1
     return Polygon(poly)
 
@@ -176,12 +176,13 @@ def read_obstacles(file_name):
 
     # classify different levels of objects
     # holes need to be filled by opposite value
+    oy = info['origin'][1] + info['resolution'] * img.shape[1]
     while unclassified:
         for i, poly in enumerate(unclassified):
             if np.max(img[measure.grid_points_in_poly(img.shape, poly)]) <= thresh:
                 img[measure.grid_points_in_poly(img.shape, poly)] = 200
                 del unclassified[i]
-                p = convert_coordinates(poly, info['resolution'], info['origin'][0], info['origin'][1])
+                p = convert_coordinates(poly, info['resolution'], info['origin'][0], -1*oy)
                 for f in free:
                     if p.contains(f):
                         p = p.difference(f)
@@ -191,7 +192,7 @@ def read_obstacles(file_name):
             if np.min(img[measure.grid_points_in_poly(img.shape, poly)]) >= thresh:
                 img[measure.grid_points_in_poly(img.shape, poly)] = 30
                 del unclassified[i]
-                p = convert_coordinates(poly, info['resolution'], info['origin'][0], info['origin'][1])
+                p = convert_coordinates(poly, info['resolution'], info['origin'][0], -1*oy)
                 for o in obstacles:
                     if p.contains(o):
                         p = p.difference(o)
