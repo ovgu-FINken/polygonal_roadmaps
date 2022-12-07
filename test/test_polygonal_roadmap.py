@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
+import logging
 import networkx as nx
 from polygonal_roadmaps import pathfinding, polygonal_roadmap, geometry
 
@@ -19,8 +20,8 @@ class TestPlanningExecution(unittest.TestCase):
         wy = (-3, 1.5)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
         self.envs.append(polygonal_roadmap.RoadmapEnvironment(map_path,
-                                                              [27, 64],
-                                                              [64, 27],
+                                                              [26, 63],
+                                                              [63, 26],
                                                               generator_points=generators,
                                                               wx=wx,
                                                               wy=wy,
@@ -63,11 +64,13 @@ class TestPlanningExecution(unittest.TestCase):
         planner = polygonal_roadmap.PrioritizedPlanner(env)
         executor = polygonal_roadmap.Executor(env, planner, time_frame=50)
         executor.run()
+        # logging.warn(f'executer history: {executor.history}')
         self.assertGreaterEqual(pathfinding.compute_solution_robustness(executor.get_history_as_solution()),
                                 1,
                                 msg="Path should be k-robust with k>=1")
         self.assertEqual(len(planner.env.start), len(executor.history[0]))
         self.assertEqual(len(planner.env.start), len(executor.history[-1]))
+        
         paths = executor.get_history_as_solution()
         self.assertTrue(pathfinding.check_nodes_connected(executor.env.g, paths))
 
@@ -86,7 +89,7 @@ class TestPlanningExecution(unittest.TestCase):
         self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100)
 
     def testPlanningWithPrioritizedPlannerHorizon(self):
-        self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=10, horizon=10)
+        self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=30, horizon=30)
 
     def testPlanningCCRPlanner(self):
         self.checkPlanner(polygonal_roadmap.CCRPlanner, limit=100)
