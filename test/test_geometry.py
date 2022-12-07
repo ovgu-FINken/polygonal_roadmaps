@@ -64,21 +64,23 @@ class TestPathPolygon(unittest.TestCase):
         start = .2, .2
         goal = .7, -1.7
         path = geometry.path_from_positions(self.graph, start, goal)
-        self.assertEqual(path, [27, 26, 28, 30, 33, 64])
+        # self.assertEqual(path, [27, 26, 28, 30, 33, 64])
+        self.assertEqual(path, [26, 25, 27, 29, 32, 63])
         # test non valid path (start and goal are not connected)
         goal = 1, 1
         self.assertRaises(nx.NetworkXNoPath, geometry.path_from_positions, self.graph, start, goal)
 
     def testPolyFromPath(self):
-        path = [27, 26, 28, 30, 33, 64]
+        # path = [27, 26, 28, 30, 33, 64]
+        path = [26, 25, 27, 29, 32, 63]
         poly = geometry.poly_from_path(self.graph, path, eps=0.05)
         self.assertTrue(poly.is_valid)
         self.assertEqual(poly.geometryType(), "Polygon")
 
     def testComputeStraightPath(self):
-        start = self.graph.nodes[27]['geometry'].center
-        goal = self.graph.nodes[64]['geometry'].center
-        path = [27, 26, 28, 30, 33, 64]
+        start = self.graph.nodes[26]['geometry'].center
+        goal = self.graph.nodes[63]['geometry'].center
+        path = [26, 25, 27, 29, 32, 63]
         poly = geometry.poly_from_path(self.graph, path, eps=0.05)
 
         line = geometry.waypoints_through_poly(self.graph, poly, start, goal, eps=0.05)
