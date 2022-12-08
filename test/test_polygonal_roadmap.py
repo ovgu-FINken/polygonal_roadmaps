@@ -88,8 +88,8 @@ class TestPlanningExecution(unittest.TestCase):
     def testPlanningWithPrioritizedPlanner(self):
         self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100)
 
-    def testPlanningWithPrioritizedPlannerHorizon(self):
-        self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=30, horizon=30)
+    # def testPlanningWithPrioritizedPlannerHorizon(self):
+    #     self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=30, horizon=30)
 
     def testPlanningCCRPlanner(self):
         self.checkPlanner(polygonal_roadmap.CCRPlanner, limit=100)
