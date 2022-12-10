@@ -5,21 +5,21 @@ from pathlib import Path
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
-import logging
 import networkx as nx
 from polygonal_roadmaps import pathfinding, polygonal_roadmap, geometry
+from polygonal_roadmaps.environment import MapfInfoEnvironment, RoadmapEnvironment, GraphEnvironment
 
 
 class TestPlanningExecution(unittest.TestCase):
     def setUp(self):
         self.envs = []
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
-        self.envs.append(polygonal_roadmap.MapfInfoEnvironment(scen_path, n_agents=4))
+        self.envs.append(MapfInfoEnvironment(scen_path, n_agents=4))
         map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "icra2021_map.yaml"
         wx = (-1, 3.5)
         wy = (-3, 1.5)
         generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        self.envs.append(polygonal_roadmap.RoadmapEnvironment(map_path,
+        self.envs.append(RoadmapEnvironment(map_path,
                                                               [26, 63],
                                                               [63, 26],
                                                               generator_points=generators,
@@ -42,9 +42,9 @@ class TestPlanningExecution(unittest.TestCase):
         paths = executor.get_history_as_solution()
         self.assertTrue(pathfinding.check_nodes_connected(executor.env.g, paths))
 
-    def testMinimalEnvironment(self):
+    def testGraphEnvironment(self):
         g = nx.from_edgelist([(1, 2), (2, 3), (1, 3), (1, 4)])
-        env = polygonal_roadmap.GraphEnvironment(g, (1, 2), (2, 4))
+        env = GraphEnvironment(g, (1, 2), (2, 4))
         self.assertTrue(isinstance(env, polygonal_roadmap.Environment))
 
         planner = polygonal_roadmap.FixedPlanner(env, [(1, 2), (2, 1), (2, 4)])
