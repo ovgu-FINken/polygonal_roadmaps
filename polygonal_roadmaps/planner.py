@@ -4,10 +4,11 @@ import numpy as np
 import networkx as nx
 from networkx.algorithms.shortest_paths.weighted import _weight_function
 from heapq import heappush, heappop
-from itertools import count
+from itertools import count, zip_longest
 from functools import partial
 import copy
 
+from polygonal_roadmaps.environment import Environment
 import logging
 
 
@@ -1039,6 +1040,101 @@ class CDM_CR:
         # np.inf - np.inf = np.nan
         cost_diff = np.array(path_costs) - np.array(new_path_costs)
         return cost_diff
+
+
+class Planner():
+    def __init__(self, environment, replan_required=False) -> None:
+        self.env = environment
+        self.replan_required = replan_required
+        self.history = []
+
+    def get_step_history(self):
+        return self.history
+
+
+class FixedPlanner(Planner):
+    def __init__(self, environment, plan) -> None:
+        super().__init__(environment)
+        self._plan = plan
+
+    def get_plan(self, *_):
+        return self._plan
+
+
+class PrioritizedPlanner(Planner):
+    def __init__(self, environment, horizon=None, **kwargs) -> None:
+        super().__init__(environment, replan_required=(horizon is not None))
+        self.kwargs = kwargs
+        self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
+
+    def get_plan(self, *_):
+        sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
+        plans = prioritized_plans(self.env.g, sg, **self.kwargs)
+        j = 0
+        ret = []
+        logging.info(f"state: {self.env.state}")
+        for i, s in enumerate(self.env.state):
+            if s is not None:
+                ret.append(plans[j] + [None])
+                j += 1
+            else:
+                ret.append([None])
+        ret = zip_longest(*ret, fillvalue=None)
+        self.history.append({"solution": plans})
+        return list(ret)
+
+
+class CBSPlanner(Planner):
+    def __init__(self, environment, horizon: int = None, **kwargs) -> None:
+        # initialize the planner.
+        # if the horizon is not None, we want to replan after execution of one step
+        super().__init__(environment, replan_required=(horizon is not None))
+        self.kwargs = kwargs
+        self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
+        sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
+        self.cbs = CBS(self.env.g, sg, **self.kwargs)
+
+    def get_plan(self, *_):
+        if self.replan_required:
+            self.cbs.update_state(self.env.state)
+        self.cbs.run()
+        plans = list(self.cbs.best.solution)
+        ret = []
+        logging.info(f"state: {self.env.state}")
+        for i, s in enumerate(self.env.state):
+            if s is not None:
+                ret.append(plans[i] + [None])
+            else:
+                ret.append([None])
+        ret = zip_longest(*ret, fillvalue=None)
+        self.history.append({"solution": plans})
+        return list(ret)
+
+
+class CCRPlanner(Planner):
+    def __init__(self, environment, horizon: int = None, **kwargs) -> None:
+        # initialize the planner.
+        # if the horizon is not None, we want to replan after execution of one step
+        super().__init__(environment, replan_required=(horizon is not None))
+        self.kwargs = kwargs
+        self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
+        self.ccr = CDM_CR(self.env.g, self.env.state, self.env.goal, **self.kwargs)
+
+    def get_plan(self, *_):
+        if self.replan_required:
+            self.ccr.update_state(self.env.state)
+        plans = self.ccr.run()
+        # reintroduce plan for those states that have already finished -> i.e., where state is None
+        self.history.append({"solution": plans, "priorities": list(zip(self.ccr.priorities_in, self.ccr.priorities))})
+        logging.info(f'plans: {plans}')
+        ret = []
+        for i, s in enumerate(self.env.state):
+            if s is not None:
+                ret.append(plans[i] + [None])
+            else:
+                ret.append([None])
+        ret = zip_longest(*ret, fillvalue=None)
+        return list(ret)
 
 
 if __name__ == "__main__":

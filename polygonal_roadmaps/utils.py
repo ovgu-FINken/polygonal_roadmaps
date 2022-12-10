@@ -10,7 +10,7 @@ import resource
 from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import polygonal_roadmap
-from polygonal_roadmaps import pathfinding
+from polygonal_roadmaps import planner
 
 
 class TimeoutError(Exception):
@@ -228,9 +228,9 @@ def run_one(planner, result_path=None, config=None):
         data = ex.get_result()
         data.failed = ex.failed
         if not ex.failed and len(ex.history):
-            data.soc = pathfinding.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
+            data.soc = planner.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
             data.makespan = len(ex.history)
-            data.k = pathfinding.compute_solution_robustness(ex.get_history_as_solution())
+            data.k = planner.compute_solution_robustness(ex.get_history_as_solution())
             data.steps = sum([len(p) for p in ex.get_history_as_solution()])
         else:
             data.soc = -1

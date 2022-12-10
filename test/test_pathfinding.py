@@ -8,7 +8,7 @@ import os
 import numpy as np
 
 
-from polygonal_roadmaps import pathfinding
+from polygonal_roadmaps import planner
 
 
 def load_graph(filename):
@@ -17,85 +17,85 @@ def load_graph(filename):
 
 class TestLowLevelSearch(unittest.TestCase):
     def setUp(self):
-        self.graph = pathfinding.gen_example_graph(5, 2)
+        self.graph = planner.gen_example_graph(5, 2)
 
     def testSumOfCost(self):
-        result = pathfinding.sum_of_cost([['b'], ['b', 'c']])
+        result = planner.sum_of_cost([['b'], ['b', 'c']])
         self.assertEqual(result, 3)
 
         # this is the behaviour of the algorithm, when one agent is at its goal already
-        result = pathfinding.sum_of_cost([[], ['2', '3']])
+        result = planner.sum_of_cost([[], ['2', '3']])
         self.assertEqual(result, 2)
 
-        result = pathfinding.sum_of_cost(None)
+        result = planner.sum_of_cost(None)
         self.assertEqual(result, np.inf)
 
-        result = pathfinding.sum_of_cost([[2, 3], None])
+        result = planner.sum_of_cost([[2, 3], None])
         self.assertEqual(result, np.inf)
 
-        result = pathfinding.sum_of_cost(['abcde', 'cc'], graph=self.graph, weight="dist")
+        result = planner.sum_of_cost(['abcde', 'cc'], graph=self.graph, weight="dist")
         self.assertAlmostEqual(result, 5.0, places=1)
 
     def testPadPath(self):
         path = [1, 2, 3]
-        path = pathfinding.pad_path(path, limit=100)
+        path = planner.pad_path(path, limit=100)
         self.assertEqual(len(path), 100)
 
     def testAStar(self):
-        path = pathfinding.spatial_astar(self.graph, 'a', 'e')
+        path = planner.spatial_astar(self.graph, 'a', 'e')
         expected = list('abcde')
         self.assertEqual(path, expected)
 
-        path = pathfinding.spatial_astar(self.graph, 'c', 'a')
+        path = planner.spatial_astar(self.graph, 'c', 'a')
         expected = list('cba')
         self.assertEqual(path, expected)
 
-        self.assertRaises(nx.NodeNotFound, pathfinding.spatial_astar, self.graph, 'a', 'Z')
+        self.assertRaises(nx.NodeNotFound, planner.spatial_astar, self.graph, 'a', 'Z')
         self.graph.add_node('Z', pos=(0.5, 0.5))
-        self.assertRaises(nx.NetworkXNoPath, pathfinding.spatial_astar, self.graph, 'a', 'Z')
+        self.assertRaises(nx.NetworkXNoPath, planner.spatial_astar, self.graph, 'a', 'Z')
 
     def testSpaceTimeAStar(self):
         for n1, n2 in self.graph.edges():
             self.graph.edges()[n1, n2]['weight'] = self.graph.edges()[n1, n2]['dist']
-        path, _ = pathfinding.spacetime_astar(self.graph, 'a', 'e', None)
+        path, _ = planner.spacetime_astar(self.graph, 'a', 'e', None)
         expected = list('abcde')
         self.assertEqual(path, expected)
 
-        path, _ = pathfinding.spacetime_astar(self.graph, 'c', 'a', None)
+        path, _ = planner.spacetime_astar(self.graph, 'c', 'a', None)
         expected = list('cba')
         self.assertEqual(path, expected)
 
-        self.assertRaises(nx.NodeNotFound, pathfinding.spacetime_astar, self.graph, 'a', 'Z', None)
+        self.assertRaises(nx.NodeNotFound, planner.spacetime_astar, self.graph, 'a', 'Z', None)
         self.graph.add_node('Z', pos=(0.5, 0.5))
-        self.assertRaises(nx.NetworkXNoPath, pathfinding.spacetime_astar, self.graph, 'a', 'Z', None), None
+        self.assertRaises(nx.NetworkXNoPath, planner.spacetime_astar, self.graph, 'a', 'Z', None), None
 
-        path, _ = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('b', 1)])
+        path, _ = planner.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('b', 1)])
         expected = list('aabcde')
         self.assertEqual(path, expected)
 
-        path, _ = pathfinding.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('c', 2)])
+        path, _ = planner.spacetime_astar(self.graph, 'a', 'e', node_constraints=[('c', 2)])
         expected = [list('aabcde'), list('abbcde'), list('abfgde')]
         self.assertIn(path, expected)
 
-        path, _ = pathfinding.spacetime_astar(self.graph, 'd', 'b', node_constraints=[('b', 3)])
+        path, _ = planner.spacetime_astar(self.graph, 'd', 'b', node_constraints=[('b', 3)])
         expected = list('dcb')
         self.assertEqual(path, expected)
 
 
 class TestPrioritizedSearch(unittest.TestCase):
     def setUp(self):
-        self.graph = pathfinding.gen_example_graph(5, 2)
+        self.graph = planner.gen_example_graph(5, 2)
 
     def testNoConflict(self):
         try:
-            solution = pathfinding.prioritized_plans(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
+            solution = planner.prioritized_plans(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
         except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('bcde'), list('gfba')])
 
     def testConflict(self):
         try:
-            solution = pathfinding.prioritized_plans(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
+            solution = planner.prioritized_plans(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
         except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('abcde'), list('edgfba')])
@@ -103,73 +103,73 @@ class TestPrioritizedSearch(unittest.TestCase):
 
 class TestCBS(unittest.TestCase):
     def setUp(self):
-        self.graph = pathfinding.gen_example_graph(5, 2)
+        self.graph = planner.gen_example_graph(5, 2)
 
     def test_compute_node_conflicts(self):
         path1 = [1, 2]
         path2 = [2, 1]
-        conflicts = pathfinding.compute_node_conflicts([path1, path2], limit=10)
+        conflicts = planner.compute_node_conflicts([path1, path2], limit=10)
         self.assertEqual(frozenset(), conflicts)
 
         path1 = [1, 3, 2]
         path2 = [2, 3]
-        conflicts = pathfinding.compute_node_conflicts([path1, path2], limit=10)
+        conflicts = planner.compute_node_conflicts([path1, path2], limit=10)
         self.assertEqual(conflicts, frozenset(
-            [frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=3),
-             pathfinding.NodeConstraint(agent=1, time=1, node=3)])]))
+            [frozenset([planner.NodeConstraint(agent=0, time=1, node=3),
+             planner.NodeConstraint(agent=1, time=1, node=3)])]))
 
-        conflicts = pathfinding.compute_node_conflicts([[0, 1, 4, 5], [2, 3]], limit=10)
+        conflicts = planner.compute_node_conflicts([[0, 1, 4, 5], [2, 3]], limit=10)
         self.assertEqual(conflicts, frozenset([]))
 
-        conflicts = pathfinding.compute_node_conflicts([[0, 1, 4, 5], [5, 4, 1, 0]], limit=10)
+        conflicts = planner.compute_node_conflicts([[0, 1, 4, 5], [5, 4, 1, 0]], limit=10)
         self.assertEqual(conflicts, frozenset([]))
 
     def test_compute_1_robust_conflicts(self):
         path1 = [1, 2]
         path2 = [3, 4]
-        conflicts = pathfinding.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
+        conflicts = planner.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
         self.assertEqual(conflicts, frozenset())
 
-        conflicts = pathfinding.compute_k_robustness_conflicts([[0, 1, 4, 5], [2, 3]], limit=10, k=1)
+        conflicts = planner.compute_k_robustness_conflicts([[0, 1, 4, 5], [2, 3]], limit=10, k=1)
         self.assertEqual(conflicts, frozenset())
 
         # following conflict
         path1 = [1, 2, 3]
         path2 = [2, 3, 4]
-        conflicts = pathfinding.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
+        conflicts = planner.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
         self.assertEqual(
             conflicts,
             frozenset([
-                pathfinding.Conflict(k=1, conflicting_agents=frozenset([pathfinding.NodeConstraint(agent=0, time=1, node=2)])),
-                pathfinding.Conflict(k=1, conflicting_agents=frozenset(
-                    [pathfinding.NodeConstraint(agent=0, time=2, node=3),
-                     pathfinding.NodeConstraint(agent=1, time=1, node=3)]))
+                planner.Conflict(k=1, conflicting_agents=frozenset([planner.NodeConstraint(agent=0, time=1, node=2)])),
+                planner.Conflict(k=1, conflicting_agents=frozenset(
+                    [planner.NodeConstraint(agent=0, time=2, node=3),
+                     planner.NodeConstraint(agent=1, time=1, node=3)]))
             ])
         )
 
         # swapping conflict
         path1 = [1, 2, 3, 4]
         path2 = [4, 3, 2, 1]
-        conflicts = pathfinding.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
+        conflicts = planner.compute_k_robustness_conflicts([path1, path2], limit=10, k=1)
         expected = frozenset([
-            pathfinding.Conflict(k=1, conflicting_agents=frozenset(
-                [pathfinding.NodeConstraint(agent=0, time=2, node=3),
-                 pathfinding.NodeConstraint(agent=1, time=1, node=3)])),
-            pathfinding.Conflict(k=1, conflicting_agents=frozenset(
-                [pathfinding.NodeConstraint(agent=1, time=2, node=2),
-                 pathfinding.NodeConstraint(agent=0, time=1, node=2)]))
+            planner.Conflict(k=1, conflicting_agents=frozenset(
+                [planner.NodeConstraint(agent=0, time=2, node=3),
+                 planner.NodeConstraint(agent=1, time=1, node=3)])),
+            planner.Conflict(k=1, conflicting_agents=frozenset(
+                [planner.NodeConstraint(agent=1, time=2, node=2),
+                 planner.NodeConstraint(agent=0, time=1, node=2)]))
         ])
         self.assertEqual(conflicts, expected)
 
     def testNonValidPath(self):
         # when the node is not within the graph, an exception is raised, because cost computation fails
-        self.assertRaises(nx.NodeNotFound, pathfinding.CBS, self.graph, [('a', 'Z')])
+        self.assertRaises(nx.NodeNotFound, planner.CBS, self.graph, [('a', 'Z')])
         self.graph.add_node('X', pos=(0.1, 0.1))
-        cbs = pathfinding.CBS(self.graph, [('a', 'b'), ('a', 'X')])
+        cbs = planner.CBS(self.graph, [('a', 'b'), ('a', 'X')])
         self.assertRaises(nx.NetworkXNoPath, cbs.run)
 
     def testCBSsetup(self):
-        cbs = pathfinding.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
+        cbs = planner.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
         cbs.setup()
         # the first step should expand the root node of the constraint tree
         self.assertTrue(cbs.root.open)
@@ -179,15 +179,15 @@ class TestCBS(unittest.TestCase):
         self.assertFalse(cbs.root.final)
 
     def testTraversal(self):
-        node1 = pathfinding.CBSNode()
+        node1 = planner.CBSNode()
         node1.tag = 1
-        node2 = pathfinding.CBSNode()
+        node2 = planner.CBSNode()
         node2.tag = 2
-        node3 = pathfinding.CBSNode()
+        node3 = planner.CBSNode()
         node3.tag = 3
-        node4 = pathfinding.CBSNode()
+        node4 = planner.CBSNode()
         node4.tag = 4
-        node5 = pathfinding.CBSNode()
+        node5 = planner.CBSNode()
         node5.tag = 5
 
         node1.children = (node2, node3)
@@ -198,7 +198,7 @@ class TestCBS(unittest.TestCase):
         self.assertEqual(traversal, [1, 2, 4, 3, 5])
 
     def testCBSNoConflict(self):
-        cbs = pathfinding.CBS(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
+        cbs = planner.CBS(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
         try:
             cbs.run()
         except nx.NetworkXNoPath:
@@ -208,7 +208,7 @@ class TestCBS(unittest.TestCase):
         self.assertTrue(cbs.root.final, "The root node should be the final node, as there are no conflicts")
 
     def testCBSrun(self):
-        cbs = pathfinding.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=12)
+        cbs = planner.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=12)
         exception_raised = False
         try:
             best = cbs.run()
@@ -219,8 +219,8 @@ class TestCBS(unittest.TestCase):
         self.assertIn(best.solution, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
 
-        G = pathfinding.gen_example_graph(5, 3)
-        cbs = pathfinding.CBS(G, [('b', 'e'), ('e', 'a'), ('a', 'f')], limit=28)
+        G = planner.gen_example_graph(5, 3)
+        cbs = planner.CBS(G, [('b', 'e'), ('e', 'a'), ('a', 'f')], limit=28)
         exception_raised = False
         try:
             cbs.run()
@@ -233,5 +233,5 @@ class TestCBS(unittest.TestCase):
 class TestCCR(unittest.TestCase):
     def testDirectComparison(self):
         qualities = [np.array([-1, -1]), np.array([-1, -1]), np.array([-0.5, -1]), np.array([1.0, 0])]
-        decision = pathfinding.decision_function(qualities, method='direct_comparison')
+        decision = planner.decision_function(qualities, method='direct_comparison')
         self.assertEqual(decision, 3)

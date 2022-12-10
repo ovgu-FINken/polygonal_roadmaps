@@ -2,7 +2,7 @@ import networkx as nx
 import logging
 import pandas as pd
 import numpy as np
-from polygonal_roadmaps import geometry, pathfinding
+from polygonal_roadmaps import geometry, planner
 
 from pathlib import Path
 
@@ -40,7 +40,7 @@ class MapfInfoEnvironment(Environment):
         self.height = df.h[0]
         self.map_file = Path() / "benchmark" / "maps" / df.map_name[0]
         self.scenario_file = scenario_file
-        graph, w, h, data = pathfinding.read_movingai_map(self.map_file)
+        graph, w, h, data = planner.read_movingai_map(self.map_file)
 
         sg = df.loc[:, "x0":"y1"].to_records(index=False)
         if n_agents is None:
