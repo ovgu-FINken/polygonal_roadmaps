@@ -9,6 +9,7 @@ import numpy as np
 
 
 from polygonal_roadmaps import planner
+from polygonal_roadmaps.environment import gen_example_graph
 
 
 def load_graph(filename):
@@ -17,7 +18,7 @@ def load_graph(filename):
 
 class TestLowLevelSearch(unittest.TestCase):
     def setUp(self):
-        self.graph = planner.gen_example_graph(5, 2)
+        self.graph = gen_example_graph(5, 2)
 
     def testSumOfCost(self):
         result = planner.sum_of_cost([['b'], ['b', 'c']])
@@ -84,7 +85,7 @@ class TestLowLevelSearch(unittest.TestCase):
 
 class TestPrioritizedSearch(unittest.TestCase):
     def setUp(self):
-        self.graph = planner.gen_example_graph(5, 2)
+        self.graph = gen_example_graph(5, 2)
 
     def testNoConflict(self):
         try:
@@ -103,7 +104,7 @@ class TestPrioritizedSearch(unittest.TestCase):
 
 class TestCBS(unittest.TestCase):
     def setUp(self):
-        self.graph = planner.gen_example_graph(5, 2)
+        self.graph = gen_example_graph(5, 2)
 
     def test_compute_node_conflicts(self):
         path1 = [1, 2]
@@ -219,7 +220,7 @@ class TestCBS(unittest.TestCase):
         self.assertIn(best.solution, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
 
-        G = planner.gen_example_graph(5, 3)
+        G = gen_example_graph(5, 3)
         cbs = planner.CBS(G, [('b', 'e'), ('e', 'a'), ('a', 'f')], limit=28)
         exception_raised = False
         try:

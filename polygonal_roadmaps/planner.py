@@ -12,29 +12,6 @@ from polygonal_roadmaps.environment import Environment
 import logging
 
 
-def gen_example_graph(a, b):
-    if b > a:
-        a, b = b, a
-    example = nx.Graph()
-    for i in range(a):
-        example.add_node(chr(i + ord('a')), pos=(i, 0))
-    for i in range(a - 1):
-        example.add_edge(chr(i + ord('a')), chr(i + ord('b')))
-    for i in range(a, a + b):
-        example.add_node(chr(i + ord('a')), pos=(i - a + (a - b) / 2, 1))
-    for i in range(a, a + b - 1):
-        example.add_edge(chr(i + ord('a')), chr(i + ord('b')))
-    example.add_edge(chr(ord('a') + int((a - b) / 2)), chr(ord('a') + a))
-    example.add_edge(chr(ord('a') - int((a - b) / 2) - 1 + a), chr(ord('a') + a + b - 1))
-
-    for source, sink in example.edges():
-        p1 = np.array(example.nodes()[source]['pos'])
-        p2 = np.array(example.nodes()[sink]['pos'])
-        example.edges()[source, sink]['dist'] = np.linalg.norm(p1 - p2)
-
-    return example
-
-
 def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
     if g.has_edge(u, v):
         g.remove_edge(u, v)
