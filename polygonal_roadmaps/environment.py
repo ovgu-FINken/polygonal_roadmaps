@@ -37,6 +37,8 @@ class Environment():
         self.start = start
         self.goal = goal
         self.perturbate_weights()
+        for state in self.start + self.goal:
+            assert(state in self.g.nodes())
 
     def perturbate_weights(self):
         for u, v in self.g.edges():
@@ -46,6 +48,13 @@ class Environment():
 
     def get_graph(self) -> nx.Graph:
         return self.g
+    
+    def get_state_goal_tuples(self) -> tuple[int, int]:
+        """ Compute the start and goal pairs for each agent in the environment.
+
+        Returns:
+            tuple[int, int]: (start, goal)"""
+        return [(s, g) for s, g in zip(self.state, self.goal) if s is not None]
 
 
 class GraphEnvironment(Environment):

@@ -515,8 +515,7 @@ def decision_function(qualities, method=None):
 
 class CBS:
     def __init__(self,
-                 g,
-                 start_goal,
+                 env: Environment,
                  weight=None,
                  agent_constraints=None,
                  limit=10, max_iter=10000,
@@ -525,18 +524,18 @@ class CBS:
                  repair_solutions=False,
                  wait_action_cost=1.0001,
                  discard_conflicts_beyond=None):
-        self.start_goal = start_goal
-        for start, goal in start_goal:
-            if start not in g.nodes() or goal not in g.nodes():
+        self.start_goal = env.get_state_goal_tuples()
+        self.g = env.get_graph()
+        for start, goal in self.start_goal:
+            if start not in self.g.nodes() or goal not in self.g.nodes():
                 raise nx.NodeNotFound()
         self.pad_paths = pad_paths
-        self.g = g
         self.repair_solutions = repair_solutions
         compute_normalized_weight(self.g, weight)
         self.limit = limit
         self.agent_constraints = agent_constraints
         self.root = CBSNode(constraints=self.agent_constraints)
-        self.agents = tuple([i for i, _ in enumerate(start_goal)])
+        self.agents = tuple([i for i, _ in enumerate(self.start_goal)])
         self.best = None
         self.max_iter = max_iter
         self.iteration_counter = 0
@@ -1020,7 +1019,7 @@ class CDM_CR:
 
 
 class Planner():
-    def __init__(self, environment, replan_required=False) -> None:
+    def __init__(self, environment: Environment, replan_required=False) -> None:
         self.env = environment
         self.replan_required = replan_required
         self.history = []
@@ -1030,7 +1029,7 @@ class Planner():
 
 
 class FixedPlanner(Planner):
-    def __init__(self, environment, plan) -> None:
+    def __init__(self, environment: Environment, plan) -> None:
         super().__init__(environment)
         self._plan = plan
 
@@ -1039,7 +1038,7 @@ class FixedPlanner(Planner):
 
 
 class PrioritizedPlanner(Planner):
-    def __init__(self, environment, horizon=None, **kwargs) -> None:
+    def __init__(self, environment: Environment, horizon=None, **kwargs) -> None:
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
         self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
@@ -1062,14 +1061,13 @@ class PrioritizedPlanner(Planner):
 
 
 class CBSPlanner(Planner):
-    def __init__(self, environment, horizon: int = None, **kwargs) -> None:
+    def __init__(self, environment: Environment, horizon: int = None, **kwargs) -> None:
         # initialize the planner.
         # if the horizon is not None, we want to replan after execution of one step
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
         self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
-        sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
-        self.cbs = CBS(self.env.g, sg, **self.kwargs)
+        self.cbs = CBS(self.env, **self.kwargs)
 
     def get_plan(self, *_):
         if self.replan_required:
@@ -1089,7 +1087,7 @@ class CBSPlanner(Planner):
 
 
 class CCRPlanner(Planner):
-    def __init__(self, environment, horizon: int = None, **kwargs) -> None:
+    def __init__(self, environment: Environment, horizon: int = None, **kwargs) -> None:
         # initialize the planner.
         # if the horizon is not None, we want to replan after execution of one step
         super().__init__(environment, replan_required=(horizon is not None))

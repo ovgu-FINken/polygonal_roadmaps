@@ -9,7 +9,7 @@ import numpy as np
 
 
 from polygonal_roadmaps import planner
-from polygonal_roadmaps.environment import gen_example_graph
+from polygonal_roadmaps.environment import gen_example_graph, GraphEnvironment
 
 
 def load_graph(filename):
@@ -105,6 +105,7 @@ class TestPrioritizedSearch(unittest.TestCase):
 class TestCBS(unittest.TestCase):
     def setUp(self):
         self.graph = gen_example_graph(5, 2)
+        self.environment = GraphEnvironment(graph=self.graph, start=('a', 'b'), goal=('b', 'a'))
 
     def test_compute_node_conflicts(self):
         path1 = [1, 2]
@@ -164,13 +165,18 @@ class TestCBS(unittest.TestCase):
 
     def testNonValidPath(self):
         # when the node is not within the graph, an exception is raised, because cost computation fails
-        self.assertRaises(nx.NodeNotFound, planner.CBS, self.graph, [('a', 'Z')])
+        self.environment.goal = ('a', 'Z')
+        self.assertRaises(nx.NodeNotFound, planner.CBS, self.environment)
         self.graph.add_node('X', pos=(0.1, 0.1))
-        cbs = planner.CBS(self.graph, [('a', 'b'), ('a', 'X')])
+        self.environment.goal = ('a', 'X')
+        cbs = planner.CBS(self.environment)
         self.assertRaises(nx.NetworkXNoPath, cbs.run)
 
     def testCBSsetup(self):
-        cbs = planner.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
+        self.environment.goal = 'e', 'a'
+        self.environment.start = 'a', 'e'
+        self.environment.state = 'a', 'e'
+        cbs = planner.CBS(self.environment, limit=15)
         cbs.setup()
         # the first step should expand the root node of the constraint tree
         self.assertTrue(cbs.root.open)
@@ -199,7 +205,10 @@ class TestCBS(unittest.TestCase):
         self.assertEqual(traversal, [1, 2, 4, 3, 5])
 
     def testCBSNoConflict(self):
-        cbs = planner.CBS(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
+        self.environment.start = 'b', 'g'
+        self.environment.state = 'b', 'g'
+        self.environment.goal = 'e', 'a'
+        cbs = planner.CBS(self.environment, limit=15)
         try:
             cbs.run()
         except nx.NetworkXNoPath:
@@ -209,7 +218,10 @@ class TestCBS(unittest.TestCase):
         self.assertTrue(cbs.root.final, "The root node should be the final node, as there are no conflicts")
 
     def testCBSrun(self):
-        cbs = planner.CBS(self.graph, [('a', 'e'), ('e', 'a')], limit=12)
+        self.environment.goal = 'e', 'a'
+        self.environment.start = 'a', 'e'
+        self.environment.state = 'a', 'e'
+        cbs = planner.CBS(self.environment, limit=12)
         exception_raised = False
         try:
             best = cbs.run()
@@ -220,8 +232,8 @@ class TestCBS(unittest.TestCase):
         self.assertIn(best.solution, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
 
-        G = gen_example_graph(5, 3)
-        cbs = planner.CBS(G, [('b', 'e'), ('e', 'a'), ('a', 'f')], limit=28)
+        env = GraphEnvironment(gen_example_graph(5, 3), start=('b', 'e', 'a'), goal=('e', 'a', 'f'))
+        cbs = planner.CBS(env, limit=28)
         exception_raised = False
         try:
             cbs.run()
