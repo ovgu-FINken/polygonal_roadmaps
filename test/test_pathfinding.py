@@ -86,10 +86,11 @@ class TestLowLevelSearch(unittest.TestCase):
 class TestPrioritizedSearch(unittest.TestCase):
     def setUp(self):
         self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'))
+        self.planning_problem_parameters = planner.PlanningProblemParameters(max_distance=12)
 
     def testNoConflict(self):
         try:
-            solution = planner.prioritized_plans(self.env, limit=15)
+            solution = planner.prioritized_plans(self.env, self.planning_problem_parameters)
         except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('bcde'), list('gfba')])
@@ -97,7 +98,7 @@ class TestPrioritizedSearch(unittest.TestCase):
     def testConflict(self):
         try:
             self.env.state = ('a', 'e')
-            solution = planner.prioritized_plans(self.env, limit=15)
+            solution = planner.prioritized_plans(self.env, self.planning_problem_parameters)
         except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('abcde'), list('edgfba')])
@@ -105,8 +106,7 @@ class TestPrioritizedSearch(unittest.TestCase):
 
 class TestCBS(unittest.TestCase):
     def setUp(self):
-        self.graph = gen_example_graph(5, 2)
-        self.environment = GraphEnvironment(graph=self.graph, start=('a', 'b'), goal=('b', 'a'))
+        self.environment = GraphEnvironment(graph=gen_example_graph(5, 2), start=('a', 'b'), goal=('b', 'a'))
 
     def test_compute_node_conflicts(self):
         path1 = [1, 2]
@@ -167,17 +167,17 @@ class TestCBS(unittest.TestCase):
     def testNonValidPath(self):
         # when the node is not within the graph, an exception is raised, because cost computation fails
         self.environment.goal = ('a', 'Z')
-        self.assertRaises(nx.NodeNotFound, planner.CBS, self.environment)
-        self.graph.add_node('X', pos=(0.1, 0.1))
+        self.assertRaises(nx.NodeNotFound, planner.CBS, self.environment, planner.PlanningProblemParameters())
+        self.environment.g.add_node('X', pos=(0.1, 0.1))
         self.environment.goal = ('a', 'X')
-        cbs = planner.CBS(self.environment)
+        cbs = planner.CBS(self.environment, planner.PlanningProblemParameters())
         self.assertRaises(nx.NetworkXNoPath, cbs.run)
 
     def testCBSsetup(self):
         self.environment.goal = 'e', 'a'
         self.environment.start = 'a', 'e'
         self.environment.state = 'a', 'e'
-        cbs = planner.CBS(self.environment, limit=15)
+        cbs = planner.CBS(self.environment, planner.PlanningProblemParameters())
         cbs.setup()
         # the first step should expand the root node of the constraint tree
         self.assertTrue(cbs.root.open)
@@ -209,7 +209,7 @@ class TestCBS(unittest.TestCase):
         self.environment.start = 'b', 'g'
         self.environment.state = 'b', 'g'
         self.environment.goal = 'e', 'a'
-        cbs = planner.CBS(self.environment, limit=15)
+        cbs = planner.CBS(self.environment, planner.PlanningProblemParameters())
         try:
             cbs.run()
         except nx.NetworkXNoPath:
@@ -222,7 +222,7 @@ class TestCBS(unittest.TestCase):
         self.environment.goal = 'e', 'a'
         self.environment.start = 'a', 'e'
         self.environment.state = 'a', 'e'
-        cbs = planner.CBS(self.environment, limit=12)
+        cbs = planner.CBS(self.environment, planner.PlanningProblemParameters())
         exception_raised = False
         try:
             best = cbs.run()
@@ -234,7 +234,7 @@ class TestCBS(unittest.TestCase):
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
 
         env = GraphEnvironment(gen_example_graph(5, 3), start=('b', 'e', 'a'), goal=('e', 'a', 'f'))
-        cbs = planner.CBS(env, limit=28)
+        cbs = planner.CBS(env, planner.PlanningProblemParameters(max_distance=28))
         exception_raised = False
         try:
             cbs.run()

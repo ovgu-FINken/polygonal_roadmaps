@@ -25,7 +25,7 @@ class Executor():
         if profiling:
             self.profile.enable()
         try:
-            plan = self.planner.get_plan(self.env)
+            plan = self.planner.create_plan(self.env)
             for i in range(self.time_frame):
                 logging.info(f"At iteration {i} / {self.time_frame}")
                 self.step(plan)
@@ -36,7 +36,7 @@ class Executor():
                     return self.history
                 if self.planner.replan_required:
                     # create new plan on updated state
-                    plan = self.planner.get_plan(self.env)
+                    plan = self.planner.create_plan(self.env)
                 else:
                     plan = plan[1:]
         except nx.NetworkXNoPath:

@@ -8,7 +8,7 @@ import unittest
 import networkx as nx
 from polygonal_roadmaps import planner, polygonal_roadmap, geometry
 from polygonal_roadmaps.environment import MapfInfoEnvironment, RoadmapEnvironment, GraphEnvironment, Environment
-from polygonal_roadmaps.planner import Planner, CBSPlanner, FixedPlanner, PrioritizedPlanner, CCRPlanner
+from polygonal_roadmaps.planner import Planner, CBSPlanner, FixedPlanner, PrioritizedPlanner, CCRPlanner, PlanningProblemParameters
 
 
 class TestPlanningExecution(unittest.TestCase):
@@ -28,9 +28,9 @@ class TestPlanningExecution(unittest.TestCase):
                                                               wy=wy,
                                                               offset=0.15))
 
-    def checkPlanner(self, Planner, *args, **kwargs):
+    def checkPlanner(self, planner_instance, *args, **kwargs):
         for env in self.envs:
-            executor = polygonal_roadmap.Executor(env, Planner(env, *args, **kwargs))
+            executor = polygonal_roadmap.Executor(env, planner_instance(env, *args, **kwargs))
             self.checkRun(executor)
 
     def checkRun(self, executor):
@@ -48,8 +48,7 @@ class TestPlanningExecution(unittest.TestCase):
         env = GraphEnvironment(g, (1, 2), (2, 4))
         self.assertTrue(isinstance(env, Environment))
 
-        planner = FixedPlanner(env, [(1, 2), (2, 1), (2, 4)])
-        self.assertIsInstance(planner, Planner)
+        planner = FixedPlanner(env, PlanningProblemParameters(), plan=[(1, 2), (2, 1), (2, 4)])
 
         executor = polygonal_roadmap.Executor(env, planner)
         self.assertListEqual(executor.history, [(1, 2)])
@@ -62,15 +61,15 @@ class TestPlanningExecution(unittest.TestCase):
 
     def testRoadmapEnvironment(self):
         env = self.envs[1]
-        prioritized_planner = PrioritizedPlanner(env)
+        prioritized_planner = PrioritizedPlanner(env, PlanningProblemParameters())
         executor = polygonal_roadmap.Executor(env, prioritized_planner, time_frame=50)
         executor.run()
         # logging.warn(f'executer history: {executor.history}')
         self.assertGreaterEqual(planner.compute_solution_robustness(executor.get_history_as_solution()),
                                 1,
                                 msg="Path should be k-robust with k>=1")
-        self.assertEqual(len(prioritized_planner.env.start), len(executor.history[0]))
-        self.assertEqual(len(prioritized_planner.env.start), len(executor.history[-1]))
+        self.assertEqual(len(prioritized_planner.environment.start), len(executor.history[0]))
+        self.assertEqual(len(prioritized_planner.environment.start), len(executor.history[-1]))
         
         paths = executor.get_history_as_solution()
         self.assertTrue(planner.check_nodes_connected(executor.env.g, paths))
@@ -81,24 +80,24 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertIsInstance(env, Environment)
 
     def testPlanningWithCBS(self):
-        self.checkPlanner(CBSPlanner, limit=100)
+        self.checkPlanner(CBSPlanner, PlanningProblemParameters(max_distance=100))
 
     def testPlanningWithCBSHorizon(self):
-        self.checkPlanner(CBSPlanner, horizon=3, discard_conflicts_beyond=3, limit=100)
+        planning_params = PlanningProblemParameters(conflict_horizon=3, max_distance=100)
+        self.checkPlanner(CBSPlanner, planning_params)
 
     def testPlanningWithPrioritizedPlanner(self):
-        self.checkPlanner(PrioritizedPlanner, limit=100)
+        self.checkPlanner(PrioritizedPlanner, PlanningProblemParameters(max_distance=100))
 
     # def testPlanningWithPrioritizedPlannerHorizon(self):
     #     self.checkPlanner(polygonal_roadmap.PrioritizedPlanner, limit=100, discard_conflicts_beyond=30, horizon=30)
 
     def testPlanningCCRPlanner(self):
-        self.checkPlanner(CCRPlanner, limit=100)
+        self.checkPlanner(CCRPlanner, PlanningProblemParameters(max_distance=100))
 
     def testPlanningCCRPlannerHSA(self):
+        planning_problem_parameters = PlanningProblemParameters(max_distance=100, conflict_horizon=3)
         self.checkPlanner(CCRPlanner,
-                          limit=100,
-                          horizon=3,
-                          discard_conflicts_beyond=3,
+                          planning_problem_parameters,
                           social_reward=0.1,
                           anti_social_punishment=0.1)
