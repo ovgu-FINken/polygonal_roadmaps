@@ -85,18 +85,19 @@ class TestLowLevelSearch(unittest.TestCase):
 
 class TestPrioritizedSearch(unittest.TestCase):
     def setUp(self):
-        self.graph = gen_example_graph(5, 2)
+        self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'))
 
     def testNoConflict(self):
         try:
-            solution = planner.prioritized_plans(self.graph, [('b', 'e'), ('g', 'a')], limit=15)
+            solution = planner.prioritized_plans(self.env, limit=15)
         except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('bcde'), list('gfba')])
 
     def testConflict(self):
         try:
-            solution = planner.prioritized_plans(self.graph, [('a', 'e'), ('e', 'a')], limit=15)
+            self.env.state = ('a', 'e')
+            solution = planner.prioritized_plans(self.env, limit=15)
         except nx.NetworkXNoPath:
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('abcde'), list('edgfba')])

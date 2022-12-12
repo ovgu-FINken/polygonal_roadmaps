@@ -760,8 +760,7 @@ def check_nodes_connected(graph, paths):
     return True
 
 
-def prioritized_plans(graph,
-                      start_goal,
+def prioritized_plans(env: Environment,
                       constraints=frozenset(),
                       limit=10,
                       pad_paths=True,
@@ -772,17 +771,17 @@ def prioritized_plans(graph,
         'wait_action_cost': wait_action_cost,
         'limit': limit,
     }
-    cache = SpaceTimeAStarCache(graph, kwargs=spacetime_kwargs)
+    cache = SpaceTimeAStarCache(env.get_graph(), kwargs=spacetime_kwargs)
     solution = []
     if weight is None:
         weight = "dist"
-    compute_normalized_weight(graph, weight)
+    compute_normalized_weight(env.get_graph(), weight)
     pad_limit = limit
     if not pad_paths:
         pad_limit = None
     if discard_conflicts_beyond is not None:
         pad_limit = discard_conflicts_beyond
-    for start, goal in start_goal:
+    for start, goal in env.get_state_goal_tuples():
         node_occupancy = compute_node_occupancy(solution, limit=pad_limit)
         constraints = set()
         for t, node in node_occupancy.keys():
@@ -801,9 +800,7 @@ def prioritized_plans(graph,
 
 class CDM_CR:
     def __init__(self,
-                 g,
-                 starts,
-                 goals,
+                 env,
                  limit: int = 10,
                  wait_action_cost: float = 1.0001,
                  weight: str = None,
@@ -812,9 +809,11 @@ class CDM_CR:
                  social_reward: float = 0.0,
                  anti_social_punishment: float = 0.0,
                  discard_conflicts_beyond=None):
+        starts = env.state
+        goals = env.goal
         self.discard_conflicts_beyond = discard_conflicts_beyond
         assert len(starts) == len(goals)
-        self.g = g
+        self.g = env.get_graph().to_directed()
         compute_normalized_weight(self.g, weight)
         self.weight = "weight"
         self.starts = starts
@@ -822,7 +821,6 @@ class CDM_CR:
         self.agents = tuple(i for i, _ in enumerate(goals))
         self.social_reward = social_reward
         self.anti_social_punishment = anti_social_punishment
-        self.g = g.to_directed()
         self.priority_map = self.g.copy()
         self.priorities = []
         self.priorities_in = []
@@ -1044,8 +1042,7 @@ class PrioritizedPlanner(Planner):
         self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
 
     def get_plan(self, *_):
-        sg = [(s, g) for s, g in zip(self.env.state, self.env.goal) if s is not None]
-        plans = prioritized_plans(self.env.g, sg, **self.kwargs)
+        plans = prioritized_plans(self.env, **self.kwargs)
         j = 0
         ret = []
         logging.info(f"state: {self.env.state}")
@@ -1093,7 +1090,7 @@ class CCRPlanner(Planner):
         super().__init__(environment, replan_required=(horizon is not None))
         self.kwargs = kwargs
         self.kwargs["limit"] = int(np.sqrt(self.env.g.number_of_nodes())) * 3
-        self.ccr = CDM_CR(self.env.g, self.env.state, self.env.goal, **self.kwargs)
+        self.ccr = CDM_CR(self.env, **self.kwargs)
 
     def get_plan(self, *_):
         if self.replan_required:
