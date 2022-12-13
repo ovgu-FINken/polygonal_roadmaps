@@ -833,7 +833,6 @@ class CCRPlanner(Planner):
         self.env = environment
         self.history = []
 
-        self.discard_conflicts_beyond = planning_problem_parameters.conflict_horizon
         self.g = self.env.get_graph().to_directed()
         compute_normalized_weight(self.g, planning_problem_parameters.weight_name)
         self.weight = "weight"
