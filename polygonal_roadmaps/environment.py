@@ -49,7 +49,7 @@ class Environment():
     def get_graph(self) -> nx.Graph:
         return self.g
     
-    def get_state_goal_tuples(self) -> tuple[int, int]:
+    def get_state_goal_tuples(self) -> list[tuple[int, int]]:
         """ Compute the start and goal pairs for each agent in the environment.
 
         Returns:

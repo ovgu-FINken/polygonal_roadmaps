@@ -116,7 +116,7 @@ def pred_to_list(g, pred, start, goal):
     return path
 
 
-def pad_path(path: list, limit: int = None) -> list:
+def pad_path(path: list, limit: Union[int, None] = None) -> list:
     if limit is None:
         return path
     if path is None or not len(path):
@@ -128,7 +128,7 @@ def pad_path(path: list, limit: int = None) -> list:
     return path
 
 
-def compute_node_conflicts(paths: list, limit: int = None) -> list:
+def compute_node_conflicts(paths: list, limit: Union[int, None] = None) -> frozenset:
     node_occupancy = compute_node_occupancy(paths, limit=limit)
 
     conflicts = []
@@ -138,7 +138,7 @@ def compute_node_conflicts(paths: list, limit: int = None) -> list:
     return frozenset(conflicts)
 
 
-def compute_node_occupancy(paths: list, limit: int = None) -> dict:
+def compute_node_occupancy(paths: list, limit: Union[int, None] = None) -> dict:
     node_occupancy = {}
     for i, path in enumerate(paths):
         for t, node in enumerate(pad_path(path, limit=limit)):
@@ -166,7 +166,7 @@ class Conflict:
         return {frozenset(self.conflicting_agents - {t_agent}), frozenset({t_agent})}
 
 
-def compute_k_robustness_conflicts(paths, limit: int = None, k: int = 0, node_occupancy: dict = None):
+def compute_k_robustness_conflicts(paths, limit: Union[int, None] = None, k: int = 0, node_occupancy: Union[dict, None] = None):
     if node_occupancy is None:
         node_occupancy = compute_node_occupancy(paths, limit=limit)
 
@@ -197,7 +197,7 @@ def compute_k_robustness_conflicts(paths, limit: int = None, k: int = 0, node_oc
     return set(conflicts)
 
 
-def compute_solution_robustness(solution, limit: int = None):
+def compute_solution_robustness(solution, limit: Union[int, None] = None):
     maximum = max([len(path) for path in solution])
     for k in range(maximum):
         conflits = compute_all_k_conflicts(solution, limit=limit, k=k)
@@ -206,7 +206,7 @@ def compute_solution_robustness(solution, limit: int = None):
     return maximum
 
 
-def compute_all_k_conflicts(solution, limit: int = None, k=1):
+def compute_all_k_conflicts(solution, limit: Union[int, None] = None, k=1):
     """compute the conflicts present in a solution
     Each conflict is a set of triples {(agent, time, node)
     - out of each conflict at least one agent has to move away to resolve the conflict
@@ -358,7 +358,7 @@ def sum_of_cost(paths, graph=None, weight=None) -> float:
         return np.inf
     if graph is None or weight is None:
         return sum([len(p) for p in paths])
-    cost = 0
+    cost = 0.0
     for path in paths:
         n1 = path[0]
         for n2 in path[1:]:
@@ -380,7 +380,7 @@ def nx_shortest(*args, **kwargs):
 
 
 class CBSNode:
-    def __init__(self, constraints: frozenset = None):
+    def __init__(self, constraints: Union[frozenset, None] = None):
         self.children = ()
         self.fitness = np.inf
         self.valid = False
@@ -548,13 +548,11 @@ def decision_function(qualities, method=None):
 class CBS:
     def __init__(self,
                  env: Environment,
-                 problem_parameters: PlanningProblemParameters=None,
+                 problem_parameters: PlanningProblemParameters,
                  agent_constraints=None,
                  max_iter=10000,
                  repair_solutions=False,
                  ):
-        if problem_parameters is None:
-            problem_parameters = PlanningProblemParameters()
         self.problem_parameters = problem_parameters
         self.start_goal = env.get_state_goal_tuples()
         self.g = env.get_graph()
@@ -1069,7 +1067,6 @@ class PrioritizedPlanner(Planner):
     def __init__(self, environment: Environment, planning_problem_parameters: PlanningProblemParameters = PlanningProblemParameters(), **kwargs) -> None:
         self.planning_problem_parameters = planning_problem_parameters
         self.replan_required = self.planning_problem_parameters.conflict_horizon is not None
-        self.planning_problem_parameters = planning_problem_parameters
         self.environment = environment
         self.kwargs = kwargs
         self.history = []

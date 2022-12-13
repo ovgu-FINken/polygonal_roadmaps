@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.spatial import Voronoi
 import shapely.geometry
 from shapely.geometry import Polygon, Point, MultiLineString, LineString
@@ -20,7 +21,7 @@ class NavNode:
     inner: Polygon
     name: str
 
-    def get_center_np(self) -> np.array:
+    def get_center_np(self) -> ArrayLike:
         return np.array(self.center.xy)[:, 0]
 
 
@@ -32,7 +33,7 @@ class NavEdge:
     borderPoly: Polygon
 
 
-def create_graph(generator_points: np.array,
+def create_graph(generator_points: ArrayLike,
                  working_area_x=(0.0, 1.0),
                  working_area_y=(0.0, 1.0),
                  offset: float = 0.02,
@@ -79,7 +80,7 @@ def add_edges_to_graph(nodes, offset):
             x = shapely.ops.shared_paths(n1.outer.exterior, n2.outer.exterior)
             if x.is_empty:
                 continue
-            e = [a for a in x if not a.is_empty and a.length > 0]
+            e = [a for a in x.geoms if not a.is_empty and a.length > 0]
             if len(e) > 0:
                 if n1.inner is None or n2.inner is None or n1.inner.is_empty or n2.inner.is_empty \
                         or not n1.inner.is_valid or not n2.inner.is_valid:
@@ -89,7 +90,7 @@ def add_edges_to_graph(nodes, offset):
                 if bp.is_valid:
                     if bp.geometryType() == 'MultiPolygon':
                         x = None
-                        for p in bp:
+                        for p in bp.geoms:
                             if p.touches(n1.inner) and p.touches(n2.inner):
                                 x = p
                         bp = x
@@ -218,7 +219,7 @@ def gen_graph_nx(nodes, edges) -> nx.Graph:
     return g
 
 
-def find_nearest_node(g, p):
+def find_nearest_node(g: nx.Graph, p: tuple[float]):
     dist = [np.linalg.norm(np.array(p) - g.nodes()[n]['geometry'].get_center_np()) for n in g.nodes()]
     return np.argmin(dist)
 
@@ -303,7 +304,7 @@ def point_on_border(g, poly: Polygon, point: Point) -> Point:
     point = Point(point)
     if point.within(poly):
         return point
-    sn = find_nearest_node(g, point)
+    sn = find_nearest_node(g, point.coords)
     inner = g.nodes()[sn]['geometry'].inner
     d = inner.exterior.project(point)
     return inner.exterior.interpolate(d)
@@ -327,14 +328,14 @@ def compute_straight_path(poly, start, goal, eps=None):
     else:
         # print(inner_line.wkt)
         pass
-    result = [i for i in inner_line if i.geometryType() == 'LineString']
+    result = [i for i in inner_line.geoms if i.geometryType() == 'LineString']
     outer_line = line - poly
     if outer_line.geometryType() == 'LineString':
         if outer_line.is_empty:
             outer_line = MultiLineString([])
         else:
             outer_line = MultiLineString([outer_line])
-    for ls in outer_line:
+    for ls in outer_line.geoms:
         i0 = poly.exterior.project(Point(ls.coords[0]))
         i1 = poly.exterior.project(Point(ls.coords[-1]))
         outer_segment = shapely.ops.substring(poly.exterior, i0, i1)
@@ -342,7 +343,7 @@ def compute_straight_path(poly, start, goal, eps=None):
             outer_segment = MultiLineString([outer_segment])
         elif outer_segment.geometryType() == 'Point':
             continue
-        result += [i for i in outer_segment if i.geometryType() == 'LineString']
+        result += [i for i in outer_segment.geoms if i.geometryType() == 'LineString']
 
     try:
         line = shapely.ops.linemerge(MultiLineString(result))
@@ -350,12 +351,12 @@ def compute_straight_path(poly, start, goal, eps=None):
         print("ASSERTION ERROR")
         print(result)
     if isinstance(line, shapely.geometry.base.BaseMultipartGeometry):
-        line = list(line)
+        line = list(line.geoms)
         for i, ls in enumerate(line):
             for j, l2 in enumerate(line):
                 if i == j:
                     continue
-                if Point(ls.coords[0]).almost_equals(Point(l2.coords[-1])):
+                if Point(ls.coords[0]).equals_exact(Point(l2.coords[-1]), 1e-6):
                     c = list(ls.coords)
                     c[0] = l2.coords[-1]
                     line[i] = LineString(c)
@@ -385,5 +386,5 @@ def compute_straight_path(poly, start, goal, eps=None):
 
 def select_largest_poly(poly):
     if poly.geometryType() == 'MultiPolygon':
-        return sorted(poly, key=lambda p: p.area, reverse=True)[0]
+        return sorted(poly.geoms, key=lambda p: p.area, reverse=True)[0]
     return poly
