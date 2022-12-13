@@ -7,6 +7,7 @@ from networkx.algorithms.shortest_paths.weighted import _weight_function
 from heapq import heappush, heappop
 from itertools import count, zip_longest
 from functools import partial
+from typing import Union
 import copy
 
 from polygonal_roadmaps.environment import Environment
@@ -18,7 +19,7 @@ class PlanningProblemParameters:
     """
     Parameters for the planning problem, that are not specific for an individual planner.
     """
-    conflict_horizon: int | None = None
+    conflict_horizon: Union[int, None] = None
     k_robustness: int = 1
     weight_name: str = "dist"
     wait_action_cost: float = 1.0001
