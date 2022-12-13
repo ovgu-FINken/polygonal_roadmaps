@@ -13,12 +13,12 @@ from polygonal_roadmaps.environment import Environment
 import logging
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True)
 class PlanningProblemParameters:
     """
     Parameters for the planning problem, that are not specific for an individual planner.
     """
-    conflict_horizon: int = None
+    conflict_horizon: int | None = None
     k_robustness: int = 1
     weight_name: str = "dist"
     wait_action_cost: float = 1.0001

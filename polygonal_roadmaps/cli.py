@@ -11,7 +11,6 @@ import resource
 from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import polygonal_roadmap
-from polygonal_roadmaps import planner
 
 
 class TimeoutError(Exception):

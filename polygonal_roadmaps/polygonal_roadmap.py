@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from polygonal_roadmaps.environment import Environment, MapfInfoEnvironment
 from polygonal_roadmaps.planner import Planner, CBSPlanner
-from polygonal_roadmaps import utils
+from polygonal_roadmaps import cli
 from itertools import groupby
 import networkx as nx
 from pathlib import Path
@@ -58,7 +58,7 @@ class Executor():
         return self.env.state
 
     def get_history_as_dataframe(self):
-        return utils.convert_history_to_df(self.history)
+        return cli.convert_history_to_df(self.history)
 
     def get_history_as_solution(self):
         solution = [[s] for s in self.history[0]]
@@ -95,7 +95,7 @@ class Executor():
     def get_result(self):
         return RunResult(
             self.history,
-            utils.create_df_from_profile(self.profile),
+            cli.create_df_from_profile(self.profile),
             {},
             planner_step_history=self.planner.get_step_history(),
         )
