@@ -2,9 +2,53 @@ import networkx as nx
 import logging
 import pandas as pd
 import numpy as np
-from polygonal_roadmaps import geometry, planner
+from polygonal_roadmaps import geometry
 
 from pathlib import Path
+
+
+def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
+    if g.has_edge(u, v):
+        g.remove_edge(u, v)
+
+
+def remove_node_if_exists(g: nx.Graph, v) -> None:
+    if g.has_node(v):
+        g.remove_node(v)
+
+
+def read_movingai_map(path):
+    # read a map given with the movingai-framework
+    with open(path) as map_file:
+        lines = map_file.readlines()
+    height = int("".join([d for d in lines[1] if d in list("0123456789")]))
+    width = int("".join([d for d in lines[2] if d in list("0123456789")]))
+
+    graph = nx.grid_2d_graph(height, width)
+    for edge in graph.edges():
+        graph.edges()[edge]['dist'] = 1
+    graph.add_edges_from(
+        [((x, y), (x + 1, y + 1)) for x in range(width - 1) for y in range(height - 1)],
+        dist=np.sqrt(2)
+    )
+    graph.add_edges_from(
+        [((x + 1, y), (x, y + 1)) for x in range(width - 1) for y in range(height - 1)],
+        dist=np.sqrt(2)
+    )
+    data = lines[4:]
+    blocked = list("@OTW")
+    for i, row in enumerate(data):
+        for j, pixel in enumerate(row[:-1]):
+            if pixel in blocked:
+                remove_node_if_exists(graph, (i, j))
+                remove_edge_if_exists(graph, (i + 1, j), (i, j + 1))
+                remove_edge_if_exists(graph, (i - 1, j), (i, j + 1))
+                remove_edge_if_exists(graph, (i + 1, j), (i, j - 1))
+                remove_edge_if_exists(graph, (i - 1, j), (i, j - 1))
+
+    for node in graph.nodes():
+        graph.nodes()[node]["pos"] = node
+    return graph, width, height, data
 
 
 def gen_example_graph(a, b):
@@ -73,7 +117,7 @@ class MapfInfoEnvironment(Environment):
         self.height = df.h[0]
         self.map_file = Path() / "benchmark" / "maps" / df.map_name[0]
         self.scenario_file = scenario_file
-        graph, w, h, data = planner.read_movingai_map(self.map_file)
+        graph, w, h, data = read_movingai_map(self.map_file)
 
         sg = df.loc[:, "x0":"y1"].to_records(index=False)
         if n_agents is None:

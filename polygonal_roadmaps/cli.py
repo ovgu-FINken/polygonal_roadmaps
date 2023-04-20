@@ -3,8 +3,6 @@ import pandas as pd
 import signal
 import yaml
 import pickle
-import io
-import pstats
 import logging
 import glob
 import resource
@@ -33,16 +31,6 @@ def read_pickle(location):
     except TypeError:
         logging.warning(f'Type Error while unpickle {location}')
     return polygonal_roadmap.RunResult([], None, {})
-
-
-def convert_history_to_df(history):
-    records = []
-    for t, state in enumerate(history):
-        for agent, pos in enumerate(state):
-            if pos is None:
-                continue
-            records.append({'agent': agent, 'x': pos[0], 'y': pos[1], 't': t})
-    return pd.DataFrame(records)
 
 
 def load_results(path=None):
@@ -96,41 +84,6 @@ def load_results(path=None):
     return pkls, profile_df
 
 
-def create_df_from_profile(profile):
-    # see https://qxf2.com/blog/saving-cprofile-stats-to-a-csv-file/
-    strio = io.StringIO()
-    ps = pstats.Stats(profile, stream=strio)
-    ps.print_stats(1.0)
-
-    result = strio.getvalue()
-    result = 'ncalls' + result.split('ncalls')[-1]
-    result = '\n'.join([','.join(line.rstrip().split(None, 5)) for line in result.split('\n')])
-
-    csv = io.StringIO(result)
-    df = pd.read_csv(csv)
-
-    def flf(s):
-        if s[0] == '{':
-            return ('{buildins}', pd.NA, s)
-        else:
-            parts = s.split(':')
-            return (':'.join(parts[:-1]), parts[-1].split('(')[0], '(' + '('.join(parts[-1].split('(')[1:]))
-
-    def extract_file(s):
-        return flf(s)[0]
-
-    def extract_line(s):
-        return flf(s)[1]
-
-    def extract_function(s):
-        return flf(s)[2]
-
-    df['file'] = df["filename:lineno(function)"].apply(extract_file)
-    df['line'] = df["filename:lineno(function)"].apply(extract_line)
-    df['function'] = df["filename:lineno(function)"].apply(extract_function)
-    return df
-
-
 def raise_timeout(number, _):
     logging.warning(f"raising exception because of signal {number}")
     raise TimeoutError()
@@ -182,25 +135,26 @@ def create_planner_from_config(config, env):
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenarios(map_file, planner_yml, n_agents=10, index=None, scentype="even"):
+def run_scenarios(map_file: str, planner_config_file: str, n_agents=10, index=None, scentype:str="even", n_scenarios:int = 25):
     if index is None:
         scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
         # strip path from scenario
         scenarios = ['{scentype}/' + s.split('/')[-1] for s in scenarios]
     else:
         scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
-    planner_file = Path("benchmark") / 'planner_config' / planner_yml
+    planner_file = Path("benchmark") / 'planner_config' / planner_config_file
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
-    for scen in scenarios:
+    data = []
+    for scen in scenarios[:n_scenarios]:
         env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents)
 
         planner = create_planner_from_config(planner_config, env)
-        path = Path('results') / planner_yml / scen
+        path = Path('results') / planner_config_file / scen
         path.mkdir(parents=True, exist_ok=True)
         planner_config.update({'map_file': env.map_file, 'scen': scen})
-        run_one(planner, result_path=path / 'result.pkl', config=planner_config)
-
+        data.append(run_one(planner, result_path=path / 'result.pkl', config=planner_config))
+    return data
 
 def run_one(planner, result_path=None, config=None):
     data = None
@@ -245,19 +199,24 @@ def run_one(planner, result_path=None, config=None):
         print(f'k-robustness with k={data.k}')
         print("failed" if data.failed else "succeeded")
         print('-----------------')
-        
+    return data
 
-    def cli_main():
-        parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
-        parser.add_argument("-planner", type=str, nargs='+', required=True)
-        parser.add_argument("-scentype", type=str, default="even")
-        parser.add_argument("-maps", type=str, nargs='+', required=True)
-        parser.add_argument("-n_agents", type=int, default=10)
-        parser.add_argument("-index", type=int, default=None)
-        parser.add_argument("-timelimit", type=int, default=None, help="Memory Limit in Gb")
-        parser.add_argument("-memlimit", type=int, default=None, help="Memory Limit in Gb")
-        parser.add_argument("-loglevel", type=str, default=None)
-        parser.add_argument("-logfile", type=str, default=None)
-        args = parser.parse_args()
-        run_all(args)
+
+def cli_main() -> None:
+    parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
+    parser.add_argument("-planner", type=str, nargs='+', required=True)
+    parser.add_argument("-scentype", type=str, default="even")
+    parser.add_argument("-maps", type=str, nargs='+', required=True)
+    parser.add_argument("-n_agents", type=int, default=10)
+    parser.add_argument("-index", type=int, default=None)
+    parser.add_argument("-timelimit", type=int, default=None, help="Memory Limit in Gb")
+    parser.add_argument("-memlimit", type=int, default=None, help="Memory Limit in Gb")
+    parser.add_argument("-loglevel", type=str, default=None)
+    parser.add_argument("-logfile", type=str, default=None)
+    args = parser.parse_args()
+    run_all(args)
+    
+
+if __name__ == '__main__':
+    cli_main()
         

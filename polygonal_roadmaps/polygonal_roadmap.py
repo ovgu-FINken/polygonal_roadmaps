@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from polygonal_roadmaps.environment import Environment, MapfInfoEnvironment
 from polygonal_roadmaps.planner import Planner, CBSPlanner
-from polygonal_roadmaps import cli
 from itertools import groupby
 import networkx as nx
 from pathlib import Path
 from cProfile import Profile
+import io
+import pstats
 
 import logging
 
@@ -58,7 +59,7 @@ class Executor():
         return self.env.state
 
     def get_history_as_dataframe(self):
-        return cli.convert_history_to_df(self.history)
+        return convert_history_to_df(self.history)
 
     def get_history_as_solution(self):
         solution = [[s] for s in self.history[0]]
@@ -95,10 +96,55 @@ class Executor():
     def get_result(self):
         return RunResult(
             self.history,
-            cli.create_df_from_profile(self.profile),
+            create_df_from_profile(self.profile),
             {},
             planner_step_history=self.planner.get_step_history(),
         )
+
+
+def create_df_from_profile(profile):
+    # see https://qxf2.com/blog/saving-cprofile-stats-to-a-csv-file/
+    strio = io.StringIO()
+    ps = pstats.Stats(profile, stream=strio)
+    ps.print_stats(1.0)
+
+    result = strio.getvalue()
+    result = 'ncalls' + result.split('ncalls')[-1]
+    result = '\n'.join([','.join(line.rstrip().split(None, 5)) for line in result.split('\n')])
+
+    csv = io.StringIO(result)
+    df = pd.read_csv(csv)
+
+    def flf(s):
+        if s[0] == '{':
+            return ('{buildins}', pd.NA, s)
+        else:
+            parts = s.split(':')
+            return (':'.join(parts[:-1]), parts[-1].split('(')[0], '(' + '('.join(parts[-1].split('(')[1:]))
+
+    def extract_file(s):
+        return flf(s)[0]
+
+    def extract_line(s):
+        return flf(s)[1]
+
+    def extract_function(s):
+        return flf(s)[2]
+
+    df['file'] = df["filename:lineno(function)"].apply(extract_file)
+    df['line'] = df["filename:lineno(function)"].apply(extract_line)
+    df['function'] = df["filename:lineno(function)"].apply(extract_function)
+    return df
+    
+
+def convert_history_to_df(history):
+    records = []
+    for t, state in enumerate(history):
+        for agent, pos in enumerate(state):
+            if pos is None:
+                continue
+            records.append({'agent': agent, 'x': pos[0], 'y': pos[1], 't': t})
+    return pd.DataFrame(records)
 
 
 def make_run(scen_path=None, n_agents=2, profiling=None):
@@ -117,4 +163,4 @@ class RunResult:
     history: list
     profile: pd.DataFrame
     config: dict
-    planner_step_history: list = None
+    planner_step_history: list | None = None

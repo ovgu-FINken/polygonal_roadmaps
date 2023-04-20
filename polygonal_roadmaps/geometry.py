@@ -10,8 +10,6 @@ import yaml
 import os
 import networkx as nx
 
-from polygonal_roadmaps import planner
-
 
 @dataclass
 class NavNode:
@@ -159,7 +157,7 @@ def poly_from_path(g, path, eps=0.05):
 def path_from_positions(g, start, goal):
     sn = find_nearest_node(g, start)
     gn = find_nearest_node(g, goal)
-    return planner.spatial_astar(g, sn, gn)
+    return nx.shortest_path(g, sn, gn)
 
 
 def convert_coordinates(poly, resolution: float, oX: float, oY: float, width: float=0):

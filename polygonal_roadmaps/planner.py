@@ -2,6 +2,7 @@ from asyncio.log import logger
 from dataclasses import dataclass
 from typing import Protocol
 import numpy as np
+from numpy.typing import ArrayLike
 import networkx as nx
 from networkx.algorithms.shortest_paths.weighted import _weight_function
 from heapq import heappush, heappop
@@ -42,50 +43,6 @@ class Planner(Protocol):
     
     def create_plan(self) -> list[list[int]]:
         ...
-
-
-def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
-    if g.has_edge(u, v):
-        g.remove_edge(u, v)
-
-
-def remove_node_if_exists(g: nx.Graph, v) -> None:
-    if g.has_node(v):
-        g.remove_node(v)
-
-
-def read_movingai_map(path):
-    # read a map given with the movingai-framework
-    with open(path) as map_file:
-        lines = map_file.readlines()
-    height = int("".join([d for d in lines[1] if d in list("0123456789")]))
-    width = int("".join([d for d in lines[2] if d in list("0123456789")]))
-
-    graph = nx.grid_2d_graph(height, width)
-    for edge in graph.edges():
-        graph.edges()[edge]['dist'] = 1
-    graph.add_edges_from(
-        [((x, y), (x + 1, y + 1)) for x in range(width - 1) for y in range(height - 1)],
-        dist=np.sqrt(2)
-    )
-    graph.add_edges_from(
-        [((x + 1, y), (x, y + 1)) for x in range(width - 1) for y in range(height - 1)],
-        dist=np.sqrt(2)
-    )
-    data = lines[4:]
-    blocked = list("@OTW")
-    for i, row in enumerate(data):
-        for j, pixel in enumerate(row[:-1]):
-            if pixel in blocked:
-                remove_node_if_exists(graph, (i, j))
-                remove_edge_if_exists(graph, (i + 1, j), (i, j + 1))
-                remove_edge_if_exists(graph, (i - 1, j), (i, j + 1))
-                remove_edge_if_exists(graph, (i + 1, j), (i, j - 1))
-                remove_edge_if_exists(graph, (i - 1, j), (i, j - 1))
-
-    for node in graph.nodes():
-        graph.nodes()[node]["pos"] = node
-    return graph, width, height, data
 
 
 @dataclass(eq=True, frozen=True, init=True)
@@ -385,7 +342,7 @@ class CBSNode:
         self.fitness = np.inf
         self.valid = False
         self.paths = None
-        self.conflicts = None  # conflicts are found after plannig
+        self.conflicts : Union[None, frozenset] = None  # conflicts are found after plannig
         self.final = None
         self.solution = None
         self.constraints = constraints  # constraints are used for planning
@@ -542,8 +499,6 @@ def decision_function(qualities, method=None):
     else:
         raise NotImplementedError(f"{method} is not available as a decision function")
 
-    return 0
-
 
 class CBS:
     def __init__(self,
@@ -569,7 +524,7 @@ class CBS:
         self.best = None
         self.max_iter = max_iter
         self.iteration_counter = 0
-        self.duplicate_cache = set()
+        self.duplicate_cache : set[NodeConstraint] = set()
         self.duplicate_counter = 0
         self.k_robustness = problem_parameters.k_robustness
         self.discard_conflcicts_beyond = problem_parameters.conflict_horizon
@@ -798,10 +753,9 @@ def prioritized_plans(env: Environment,
         'limit': planning_problem_parameters.max_distance,
     }
     cache = SpaceTimeAStarCache(env.get_graph(), kwargs=spacetime_kwargs)
-    solution = []
-    weight = planning_problem_parameters.weight_name
-    compute_normalized_weight(env.get_graph(), weight)
-    pad_limit = planning_problem_parameters.max_distance
+    solution : list[list[int]] = []
+    compute_normalized_weight(env.get_graph(), planning_problem_parameters.weight_name)
+    pad_limit : Union[int, None] = planning_problem_parameters.max_distance
     if not planning_problem_parameters.pad_path:
         pad_limit = None
     if planning_problem_parameters.conflict_horizon is not None:
@@ -846,7 +800,7 @@ class CCRPlanner(Planner):
             'wait_action_cost': planning_problem_parameters.wait_action_cost,
         }
         self.cache = SpaceTimeAStarCache(self.g, kwargs=astar_kwargs)
-        self.constraints = []
+        self.constraints : list[NodeConstraint] = []
 
     def create_plan(self, *_):
         if self.replan_required:
@@ -998,14 +952,14 @@ class CCRPlanner(Planner):
             logging.info(f"constraints: {constraints}")
         return constraints
 
-    def compute_qualities(self, options) -> list:
+    def compute_qualities(self, options) -> ArrayLike:
         """compute one quality for each option for each agent"""
         path_costs = [nx_shortest(self.priority_map, self.env.state[i], self.env.goal[i], weight=self.weight)
                       for i, _ in enumerate(self.agents) if self.env.state[i] is not None]
-        qualities = []
+        q = []
         for o in options:
-            qualities.append(self.evaluate_option(o, path_costs=path_costs))
-        qualities = np.array(qualities)
+            q.append(self.evaluate_option(o, path_costs=path_costs))
+        qualities = np.array(q)
         qualities = qualities - np.min(qualities, axis=0)
         return qualities
 
@@ -1112,8 +1066,6 @@ class CBSPlanner(Planner):
         ret = zip_longest(*ret, fillvalue=None)
         self.history.append({"solution": plans})
         return list(ret)
-
-
 
 
 if __name__ == "__main__":
