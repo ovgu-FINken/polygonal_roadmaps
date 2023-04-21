@@ -156,7 +156,17 @@ class MapfInfoEnvironment(Environment):
 
 
 class RoadmapEnvironment(Environment):
-    def __init__(self, map_path, start_positions, goal_positions, generator_points=None, wx=None, wy=None, offset=0.15):
+    def __init__(self, map_path, start_positions, goal_positions, generator_points=None, wx:tuple[float,float]|None=None, wy:tuple[float,float]|None=None, offset:float=0.15):
+        """create an environment from robotics map with roadmap (voronoi based)
+
+        :param map_path: path to map yaml
+        :param start_positions: node ids! of start positions
+        :param goal_positions: node ids! of goal positions
+        :param generator_points: points that distribute space in voronoi cells, defaults to None
+        :param wx: workspace extension in x, defaults to None
+        :param wy: workspace extension in y, defaults to None
+        :param offset: robot size (radius) + security, defaults to 0.15
+        """
         _, obstacles = geometry.read_obstacles(map_path)
         if wx is None:
             wx = (-1, 3.5)
@@ -169,4 +179,5 @@ class RoadmapEnvironment(Environment):
                                       working_area_y=wy,
                                       offset=offset,
                                       occupied_space=obstacles)
+        
         super().__init__(graph, start_positions, goal_positions)
