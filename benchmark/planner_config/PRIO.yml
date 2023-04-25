@@ -1,4 +1,2 @@
 planner: PrioritizedPlanner
-planner_args:
-  weight: 'dist'
-  limit: 200
+planner_args: {}

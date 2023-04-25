@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from polygonal_roadmaps.environment import Environment, MapfInfoEnvironment
-from polygonal_roadmaps.planner import Planner, CBSPlanner
+from polygonal_roadmaps.planning import Planner, CBSPlanner
 from itertools import groupby
 import networkx as nx
 from pathlib import Path
@@ -98,7 +98,7 @@ class Executor():
             self.history,
             create_df_from_profile(self.profile),
             {},
-            planner_step_history=self.planner.get_step_history(),
+            None # planner_step_history=self.planner.get_step_history(),
         )
 
 

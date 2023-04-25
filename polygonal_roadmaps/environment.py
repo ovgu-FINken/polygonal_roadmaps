@@ -4,7 +4,22 @@ import pandas as pd
 import numpy as np
 from polygonal_roadmaps import geometry
 
+from dataclasses import dataclass
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class PlanningProblemParameters:
+    """
+    Parameters for the planning problem, that are not specific for an individual planner.
+    """
+    conflict_horizon: int | None = None
+    k_robustness: int = 1
+    weight_name: str = "dist"
+    wait_action_cost: float = 1.0001
+    pad_path: bool = False
+    max_distance: int = 10
+
 
 
 def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
@@ -75,7 +90,8 @@ def gen_example_graph(a, b):
 
 
 class Environment():
-    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=PlanningProblemParameters()) -> None:
+        self.planning_problem_parameters = planning_problem_parameters
         self.g = graph
         self.state = start
         self.start = start
@@ -99,11 +115,18 @@ class Environment():
         Returns:
             tuple[int, int]: (start, goal)"""
         return [(s, g) for s, g in zip(self.state, self.goal) if s is not None]
+    
+    def __str__(self):
+        return f"""Environment:
+{self.g.number_of_nodes()} nodes, {self.g.number_of_edges()} edges
+Start: {self.start}
+Goal: {self.goal}
+"""
 
 
 class GraphEnvironment(Environment):
-    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple) -> None:
-        super().__init__(graph, start, goal)
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=None) -> None:
+        super().__init__(graph, start, goal, planning_problem_parameters=planning_problem_parameters)
 
 
 class MapfInfoEnvironment(Environment):
@@ -119,11 +142,11 @@ class MapfInfoEnvironment(Environment):
         self.scenario_file = scenario_file
         graph, w, h, data = read_movingai_map(self.map_file)
 
-        sg = df.loc[:, "x0":"y1"].to_records(index=False)
+        sg = df.loc[:,"x0":"y1"].to_records(index=False)
         if n_agents is None:
             n_agents = len(sg)
-        start = [(x, y) for y, x, *_ in sg[:n_agents]]
-        goal = [(x, y) for *_, y, x, in sg[:n_agents]]
+        start = tuple((x, y) for y, x, *_ in sg[:n_agents])
+        goal = tuple((x, y) for *_, y, x, in sg[:n_agents])
         for s in start:
             if s not in graph:
                 logging.error(f"start {s} not in map {self.map_file}, value is {data[s[0]][s[1]]}")
@@ -131,7 +154,8 @@ class MapfInfoEnvironment(Environment):
         for g in goal:
             if g not in graph:
                 logging.error(f"goal {g} not in map {self.map_file}, value is {data[s[0]][s[1]]}")
-        super().__init__(graph, start, goal)
+        planning_problem_parameters = PlanningProblemParameters(max_distance=2*(self.width+self.height))
+        super().__init__(graph, start, goal, planning_problem_parameters=planning_problem_parameters)
 
     def get_background_matrix(self):
         positions = nx.get_node_attributes(self.g, 'pos').values()

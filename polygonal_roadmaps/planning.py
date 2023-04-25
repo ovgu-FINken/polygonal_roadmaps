@@ -15,25 +15,12 @@ from polygonal_roadmaps.environment import Environment
 import logging
 
 
-@dataclass(frozen=True)
-class PlanningProblemParameters:
-    """
-    Parameters for the planning problem, that are not specific for an individual planner.
-    """
-    conflict_horizon: Union[int, None] = None
-    k_robustness: int = 1
-    weight_name: str = "dist"
-    wait_action_cost: float = 1.0001
-    pad_path: bool = False
-    max_distance: int = 10
-    
-
 class Planner(Protocol):
     environment: Environment
     replan_required: bool
     history: list[list[int]]
     
-    def __init__(self, environment: Environment, planning_problem_parameters: PlanningProblemParameters, **kwargs: dict) -> None:
+    def __init__(self, environment: Environment, **kwargs: dict) -> None:
         """all plans should be initialized with an environment, general parameters and problem specific parameters passed as keyword arguments
 
         :param environment: environment
@@ -503,21 +490,18 @@ def decision_function(qualities, method=None):
 class CBS:
     def __init__(self,
                  env: Environment,
-                 problem_parameters: PlanningProblemParameters,
                  agent_constraints=None,
                  max_iter=10000,
                  repair_solutions=False,
                  ):
-        self.problem_parameters = problem_parameters
         self.start_goal = env.get_state_goal_tuples()
+        self.env = env
         self.g = env.get_graph()
         for start, goal in self.start_goal:
             if start not in self.g.nodes() or goal not in self.g.nodes():
                 raise nx.NodeNotFound()
-        self.pad_paths = problem_parameters.pad_path
         self.repair_solutions = repair_solutions
-        compute_normalized_weight(self.g, problem_parameters.weight_name)
-        self.limit = problem_parameters.max_distance
+        compute_normalized_weight(self.g, self.env.planning_problem_parameters.weight_name)
         self.agent_constraints = agent_constraints
         self.root = CBSNode(constraints=self.agent_constraints)
         self.agents = tuple([i for i, _ in enumerate(self.start_goal)])
@@ -526,11 +510,9 @@ class CBS:
         self.iteration_counter = 0
         self.duplicate_cache : set[NodeConstraint] = set()
         self.duplicate_counter = 0
-        self.k_robustness = problem_parameters.k_robustness
-        self.discard_conflcicts_beyond = problem_parameters.conflict_horizon
         spacetime_kwargs = {
-            'wait_action_cost': problem_parameters.wait_action_cost,
-            'limit': problem_parameters.max_distance,
+            'wait_action_cost': self.env.planning_problem_parameters.wait_action_cost,
+            'limit': self.env.planning_problem_parameters.max_distance,
         }
         self.cache = SpaceTimeAStarCache(self.g, [g for _, g in (self.start_goal)], kwargs=spacetime_kwargs)
 
@@ -599,9 +581,9 @@ class CBS:
 
     def repair_node_solution(self, node):
         # implementation: quick and dirty
-        limit = self.limit if self.pad_paths else None
-        if self.discard_conflcicts_beyond is not None:
-            limit = self.discard_conflcicts_beyond
+        limit = self.env.planning_problem_parameters.conflict_horizon if self.env.planning_problem_parameters.pad_path else None
+        if self.env.planning_problem_parameters.conflict_horizon is not None:
+            limit = self.env.planning_problem_parameters.conflict_horizon
         constraints = set(node.constraints)
         for agent in self.agents:
             solution, _ = self.compute_node_solution(CBSNode(constraints), max_agents=agent + 1)
@@ -664,9 +646,9 @@ class CBS:
             logging.debug(f"set node to final because of best fitness value: {node.fitness} >= {self.best.fitness}")
             return node
 
-        limit = self.limit if self.pad_paths else None
-        if self.discard_conflcicts_beyond is not None:
-            limit = self.discard_conflcicts_beyond
+        limit = self.env.planning_problem_parameters.conflict_horizon if self.env.planning_problem_parameters.pad_path else None
+        if self.env.planning_problem_parameters.conflict_horizon is not None:
+            limit = self.env.planning_problem_parameters.conflict_horizon
         node.conflicts = compute_all_k_conflicts(node.solution, limit=limit, k=self.k_robustness)
 
         if not len(node.conflicts):
@@ -746,8 +728,8 @@ def check_nodes_connected(graph, paths):
 
 
 def prioritized_plans(env: Environment,
-                      planning_problem_parameters: PlanningProblemParameters,
                       constraints=frozenset()):
+    planning_problem_parameters = env.planning_problem_parameters
     spacetime_kwargs = {
         'wait_action_cost': planning_problem_parameters.wait_action_cost,
         'limit': planning_problem_parameters.max_distance,
@@ -778,39 +760,38 @@ def prioritized_plans(env: Environment,
 
 
 class CCRPlanner(Planner):
-    def __init__(self, environment: Environment, planning_problem_parameters: PlanningProblemParameters = PlanningProblemParameters(), social_reward=0.0, anti_social_punishment=0.0) -> None:
+    def __init__(self, environment: Environment, social_reward=0.0, anti_social_punishment=0.0) -> None:
         # initialize the planner.
         # if the horizon is not None, we want to replan after execution of one step
-        self.planning_problem_parameters = planning_problem_parameters
-        self.replan_required = planning_problem_parameters.conflict_horizon is None
-        self.env = environment
+        self.environment = environment
+        self.replan_required = self.environment.planning_problem_parameters.conflict_horizon is None
         self.history = []
 
-        self.g = self.env.get_graph().to_directed()
-        compute_normalized_weight(self.g, planning_problem_parameters.weight_name)
+        self.g = self.environment.get_graph().to_directed()
+        compute_normalized_weight(self.g, self.environment.planning_problem_parameters.weight_name)
         self.weight = "weight"
-        self.agents = tuple(i for i, _ in enumerate(self.env.goal))
+        self.agents = tuple(i for i, _ in enumerate(self.environment.goal))
         self.social_reward = social_reward
         self.anti_social_punishment = anti_social_punishment
         self.priority_map = self.g.copy()
-        self.priorities = []
-        self.priorities_in = []
+        self.priorities:list[int|str] = []
+        self.priorities_in:list[int|str] = []
         astar_kwargs = {
-            'limit': planning_problem_parameters.max_distance,
-            'wait_action_cost': planning_problem_parameters.wait_action_cost,
+            'limit': self.environment.planning_problem_parameters.max_distance,
+            'wait_action_cost': self.environment.planning_problem_parameters.wait_action_cost,
         }
         self.cache = SpaceTimeAStarCache(self.g, kwargs=astar_kwargs)
         self.constraints : list[NodeConstraint] = []
 
     def create_plan(self, *_):
         if self.replan_required:
-            self.update_state(self.env.state)
+            self.update_state(self.environment.state)
         plans = self.run()
         # reintroduce plan for those states that have already finished -> i.e., where state is None
         self.history.append({"solution": plans, "priorities": list(zip(self.priorities_in, self.priorities))})
         logging.info(f'plans: {plans}')
         ret = []
-        for i, s in enumerate(self.env.state):
+        for i, s in enumerate(self.environment.state):
             if s is not None:
                 ret.append(plans[i] + [None])
             else:
@@ -826,9 +807,9 @@ class CCRPlanner(Planner):
             solution = []
             costs = 0
 
-            for agent, _ in enumerate(self.env.state):
-                start = self.env.state[agent]
-                goal = self.env.goal[agent]
+            for agent, _ in enumerate(self.environment.state):
+                start = self.environment.state[agent]
+                goal = self.environment.goal[agent]
                 nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
                 path, cost = self.cache.get_path(start, goal, frozenset(nc))
                 if not path and start is not None:
@@ -852,10 +833,10 @@ class CCRPlanner(Planner):
     def find_conflicts(self, solution):
         if not solution_valid(solution):
             logging.info(f'invalid solution: {solution}')
-        limit = self.planning_problem_parameters.max_distance if self.planning_problem_parameters.pad_path else None
-        if self.planning_problem_parameters.conflict_horizon is not None:
-            limit = self.planning_problem_parameters.conflict_horizon
-        conflicts = compute_all_k_conflicts(solution, limit=limit, k=self.planning_problem_parameters.k_robustness)
+        limit = self.environment.planning_problem_parameters.max_distance if self.environment.planning_problem_parameters.pad_path else None
+        if self.environment.planning_problem_parameters.conflict_horizon is not None:
+            limit = self.environment.planning_problem_parameters.conflict_horizon
+        conflicts = compute_all_k_conflicts(solution, limit=limit, k=self.environment.planning_problem_parameters.k_robustness)
         return conflicts
 
     def resolve_first_conflict(self, conflicts):
@@ -920,9 +901,9 @@ class CCRPlanner(Planner):
         recompute_needed = True
         while recompute_needed:
             solution, costs = [], 0
-            for agent, _ in enumerate(self.env.state):
-                start = self.env.state[agent]
-                goal = self.env.goal[agent]
+            for agent, _ in enumerate(self.environment.state):
+                start = self.environment.state[agent]
+                goal = self.environment.goal[agent]
                 nc = frozenset([(c.node, c.time) for c in self.constraints if c.agent == agent])
                 path, cost = self.cache.get_path(start, goal, frozenset(nc))
                 if path is None:
@@ -954,8 +935,8 @@ class CCRPlanner(Planner):
 
     def compute_qualities(self, options) -> ArrayLike:
         """compute one quality for each option for each agent"""
-        path_costs = [nx_shortest(self.priority_map, self.env.state[i], self.env.goal[i], weight=self.weight)
-                      for i, _ in enumerate(self.agents) if self.env.state[i] is not None]
+        path_costs = [nx_shortest(self.priority_map, self.environment.state[i], self.environment.goal[i], weight=self.weight)
+                      for i, _ in enumerate(self.agents) if self.environment.state[i] is not None]
         q = []
         for o in options:
             q.append(self.evaluate_option(o, path_costs=path_costs))
@@ -975,8 +956,8 @@ class CCRPlanner(Planner):
     def evaluate_option(self, edge, path_costs=None):
         """evaluate giveing priority to a given edge (option)"""
         if path_costs is None:
-            path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
-                          for i, _ in enumerate(self.agents) if self.starts[i] is not None]
+            path_costs = [nx_shortest(self.priority_map, self.environment.state[i], self.environment.goal[i], weight=self.weight)
+                          for i, _ in enumerate(self.agents) if self.environment.state[i] is not None]
 
         # delete all edges going to the node $edge[1]
         edges = [e for e in self.priority_map.in_edges(edge[1])]
@@ -989,8 +970,8 @@ class CCRPlanner(Planner):
 
         # compute all paths and their cost
         # if no path is found, cost = np.inf
-        new_path_costs = [nx_shortest(self.priority_map, self.starts[i], self.goals[i], weight=self.weight)
-                          for i, _ in enumerate(self.agents) if self.starts[i] is not None]
+        new_path_costs = [nx_shortest(self.priority_map, self.environment.state[i], self.environment.goal[i], weight=self.weight)
+                          for i, _ in enumerate(self.agents) if self.environment.state[i] is not None]
 
         logging.info(f'edge: {edge[0:2]}, old cost: {path_costs}, new cost: {new_path_costs}')
         # compute the difference in path cost
@@ -1000,13 +981,13 @@ class CCRPlanner(Planner):
 
 
 class FixedPlanner(Planner):
-    def __init__(self, environment: Environment, planning_problem_parameters: PlanningProblemParameters, **kwargs) -> None:
+    def __init__(self, environment: Environment, **kwargs) -> None:
         """ Planner used for testing purposes, a precomputed plan is passed as keyword argument
 
         :param environment: _description_
-        :param planning_problem_parameters: _description_, defaults to PlanningProblemParameters()
         :keyword plan: plann passed as keyword argument
         """
+        planning_problem_parameters = environment.planning_problem_parameters
         self.environment = environment
         self.planning_problem_parameters = planning_problem_parameters
         self.replan_required = False
@@ -1018,7 +999,8 @@ class FixedPlanner(Planner):
 
 
 class PrioritizedPlanner(Planner):
-    def __init__(self, environment: Environment, planning_problem_parameters: PlanningProblemParameters = PlanningProblemParameters(), **kwargs) -> None:
+    def __init__(self, environment: Environment, **kwargs) -> None:
+        planning_problem_parameters = environment.planning_problem_parameters
         self.planning_problem_parameters = planning_problem_parameters
         self.replan_required = self.planning_problem_parameters.conflict_horizon is not None
         self.environment = environment
@@ -1042,7 +1024,8 @@ class PrioritizedPlanner(Planner):
 
 
 class CBSPlanner(Planner):
-    def __init__(self, environment: Environment, planning_problem_parameters: PlanningProblemParameters = PlanningProblemParameters(), horizon: int = None, **kwargs) -> None:
+    def __init__(self, environment: Environment, **kwargs) -> None:
+        planning_problem_parameters = environment.planning_problem_parameters
         # initialize the planner.
         # if the horizon is not None, we want to replan after execution of one step
         self.replan_required = planning_problem_parameters.conflict_horizon is not None

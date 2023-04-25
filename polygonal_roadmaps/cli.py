@@ -8,7 +8,7 @@ import glob
 import resource
 from tqdm import tqdm
 from pathlib import Path
-from polygonal_roadmaps import polygonal_roadmap
+from polygonal_roadmaps import planning, polygonal_roadmap
 
 
 class TimeoutError(Exception):
@@ -115,8 +115,8 @@ def run_all(args):
         logging.info(f"set memlimit to {args.timelimit}min == {limit}s")
         resource.setrlimit(resource.RLIMIT_CPU, (limit, hardlimit))
     for planner in args.planner:
-        for map_file in args.maps:
-            run_scenarios(map_file.split(".")[0], planner, n_agents=args.n_agents, index=args.index, scentype=args.scentype)
+        for scenario in args.scenarios:
+            run_scenario(scenario, planner, n_agents=args.n_agents, index=args.index)
 
 
 def create_planner_from_config_file(config_file, env):
@@ -127,41 +127,65 @@ def create_planner_from_config_file(config_file, env):
 
 def create_planner_from_config(config, env):
     if config['planner'] == 'CBS':
-        return polygonal_roadmap.CBSPlanner(env, **config['planner_args'])
+        return planning.CBSPlanner(env, **config['planner_args'])
     elif config['planner'] == 'CCR':
-        return polygonal_roadmap.CCRPlanner(env, **config['planner_args'])
+        return planning.CCRPlanner(env, **config['planner_args'])
     elif config['planner'] == 'PrioritizedPlanner':
-        return polygonal_roadmap.PrioritizedPlanner(env, **config['planner_args'])
+        return planning.PrioritizedPlanner(env, **config['planner_args'])
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenarios(map_file: str, planner_config_file: str, n_agents=10, index=None, scentype:str="even", n_scenarios:int = 25):
-    if index is None:
-        scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
-        # strip path from scenario
-        scenarios = ['{scentype}/' + s.split('/')[-1] for s in scenarios]
-    else:
-        scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
+def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:None|int=None, n_scenarios:int=25):
     planner_file = Path("benchmark") / 'planner_config' / planner_config_file
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
     data = []
-    for scen in scenarios[:n_scenarios]:
-        env = polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents)
-
+    for i, env in enumerate(env_generator(scen_str, n_agents, index=index)):
+        if i>=n_scenarios:
+            break
         planner = create_planner_from_config(planner_config, env)
-        path = Path('results') / planner_config_file / scen
+        path = Path('results') / planner_config_file / scen_str
         path.mkdir(parents=True, exist_ok=True)
-        planner_config.update({'map_file': env.map_file, 'scen': scen})
+        planner_config.update({'scen': scen_str, "index": i})
         data.append(run_one(planner, result_path=path / 'result.pkl', config=planner_config))
+    if i < n_scenarios - 1:
+        logging.warning(f"only {i+1} out of {n_scenarios} scenarios generated for {scen_str}")
     return data
+
+
+def env_generator(scen_str, n_agents=10, index=None):
+    match scen_str.split(";"):
+        case "MAPF", map_file, scen_type:
+            envs = load_mapf_scenarios(map_file, scen_type, n_agents, index=index)
+        case "DrivingSwarm", scenario_yml:
+            envs = load_driving_swarm_scenarios(scenario_yml, n_agents, index=index)
+    return envs
+
+
+def load_driving_swarm_scenarios(scenario_yml, n_agents, index=None):
+    scenario = None
+    with open(scenario_yml) as stream:
+        scenario = yaml.safe_load(stream)
+    return (polygonal_roadmap.RoadmapEnvironment(start_positions[:n_agents], goal_positinos[:n_agents], **scenario["env_args"]) for scen in scenarios)
+
+
+def load_mapf_scenarios(map_file, scentype, n_agents, index=None):
+    if index is None:
+        scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
+        # strip path from scenario
+        scenarios = [f'{scentype}/' + s.split('/')[-1] for s in scenarios]
+    else:
+        scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
+    return (polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents) for scen in scenarios)
+    
 
 def run_one(planner, result_path=None, config=None):
     data = None
-    ex = polygonal_roadmap.Executor(planner.env, planner)
+    ex = polygonal_roadmap.Executor(planner.environment, planner)
     ex.failed = True
     try:
         print('-----------------')
+        print(ex.env)
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
@@ -182,9 +206,9 @@ def run_one(planner, result_path=None, config=None):
         data = ex.get_result()
         data.failed = ex.failed
         if not ex.failed and len(ex.history):
-            data.soc = planner.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
+            data.soc = planning.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
             data.makespan = len(ex.history)
-            data.k = planner.compute_solution_robustness(ex.get_history_as_solution())
+            data.k = planning.compute_solution_robustness(ex.get_history_as_solution())
             data.steps = sum([len(p) for p in ex.get_history_as_solution()])
         else:
             data.soc = -1
@@ -205,8 +229,7 @@ def run_one(planner, result_path=None, config=None):
 def cli_main() -> None:
     parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
     parser.add_argument("-planner", type=str, nargs='+', required=True)
-    parser.add_argument("-scentype", type=str, default="even")
-    parser.add_argument("-maps", type=str, nargs='+', required=True)
+    parser.add_argument("-scenarios", type=str, nargs='+', required=True)
     parser.add_argument("-n_agents", type=int, default=10)
     parser.add_argument("-index", type=int, default=None)
     parser.add_argument("-timelimit", type=int, default=None, help="Memory Limit in Gb")
