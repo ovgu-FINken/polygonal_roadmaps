@@ -125,7 +125,7 @@ Goal: {self.goal}
 
 
 class GraphEnvironment(Environment):
-    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=None) -> None:
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=PlanningProblemParameters()) -> None:
         super().__init__(graph, start, goal, planning_problem_parameters=planning_problem_parameters)
 
 

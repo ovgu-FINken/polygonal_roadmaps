@@ -148,8 +148,6 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
         path.mkdir(parents=True, exist_ok=True)
         planner_config.update({'scen': scen_str, "index": i})
         data.append(run_one(planner, result_path=path / 'result.pkl', config=planner_config))
-    if i < n_scenarios - 1:
-        logging.warning(f"only {i+1} out of {n_scenarios} scenarios generated for {scen_str}")
     return data
 
 

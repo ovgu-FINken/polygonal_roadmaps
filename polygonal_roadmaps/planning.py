@@ -324,7 +324,7 @@ def nx_shortest(*args, **kwargs):
 
 
 class CBSNode:
-    def __init__(self, constraints: Union[frozenset, None] = None):
+    def __init__(self, constraints: frozenset[NodeConstraint] = frozenset()):
         self.children = ()
         self.fitness = np.inf
         self.valid = False
@@ -332,9 +332,7 @@ class CBSNode:
         self.conflicts : Union[None, frozenset] = None  # conflicts are found after plannig
         self.final = None
         self.solution = None
-        self.constraints = constraints  # constraints are used for planning
-        if self.constraints is None:
-            self.constraints = frozenset()
+        self.constraints = constraints
         self.open = True
 
     def __iter__(self):
@@ -502,7 +500,7 @@ class CBS:
                 raise nx.NodeNotFound()
         self.repair_solutions = repair_solutions
         compute_normalized_weight(self.g, self.env.planning_problem_parameters.weight_name)
-        self.agent_constraints = agent_constraints
+        self.agent_constraints = frozenset() if agent_constraints is None else agent_constraints
         self.root = CBSNode(constraints=self.agent_constraints)
         self.agents = tuple([i for i, _ in enumerate(self.start_goal)])
         self.best = None
@@ -593,7 +591,7 @@ class CBS:
                 return
             for t, n in enumerate(pad_path(solution[agent], limit=limit)):
                 # add constraints to the paths of all the following agents
-                for k in range(self.k_robustness + 1):
+                for k in range(self.env.planning_problem_parameters.k_robustness + 1):
                     constraints |= {NodeConstraint(agent=ti, time=t + k, node=n) for ti in self.agents[agent:]}
             logging.debug(f"prioritized plan: {agent}")
         fake_node = CBSNode(frozenset(constraints))
@@ -606,7 +604,7 @@ class CBS:
         logging.debug(f"after: {self.best.fitness}")
         node.children = (*node.children, fake_node)
 
-    def compute_node_solution(self, node, max_agents=None):
+    def compute_node_solution(self, node: CBSNode, max_agents=None):
         solution = []
         if max_agents is None:
             max_agents = len(self.agents)
@@ -649,7 +647,7 @@ class CBS:
         limit = self.env.planning_problem_parameters.conflict_horizon if self.env.planning_problem_parameters.pad_path else None
         if self.env.planning_problem_parameters.conflict_horizon is not None:
             limit = self.env.planning_problem_parameters.conflict_horizon
-        node.conflicts = compute_all_k_conflicts(node.solution, limit=limit, k=self.k_robustness)
+        node.conflicts = compute_all_k_conflicts(node.solution, limit=limit, k=self.env.planning_problem_parameters.k_robustness)
 
         if not len(node.conflicts):
             logging.debug("set node to final because no conflicts")
@@ -1031,7 +1029,7 @@ class CBSPlanner(Planner):
         self.replan_required = planning_problem_parameters.conflict_horizon is not None
         self.kwargs = kwargs
         self.environment = environment
-        self.cbs = CBS(self.environment, planning_problem_parameters, **self.kwargs)
+        self.cbs = CBS(self.environment, **self.kwargs)
         self.history = []
 
     def create_plan(self, *_):
