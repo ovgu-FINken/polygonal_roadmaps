@@ -2,6 +2,8 @@ import os
 import sys
 from pathlib import Path
 
+from polygonal_roadmaps.cli import env_generator
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
@@ -16,17 +18,7 @@ class TestPlanningExecution(unittest.TestCase):
         self.envs = []
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"
         self.envs.append(MapfInfoEnvironment(scen_path, n_agents=4))
-        map_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "icra2021_map.yaml"
-        wx = (-1, 3.5)
-        wy = (-3, 1.5)
-        generators = geometry.square_tiling(0.5, working_area_x=wx, working_area_y=wy)
-        self.envs.append(RoadmapEnvironment(map_path,
-                                                              [26, 63],
-                                                              [63, 26],
-                                                              generator_points=generators,
-                                                              wx=wx,
-                                                              wy=wy,
-                                                              offset=0.15))
+        self.envs.append(env_generator("DrivingSwarm;icra2021_map.yaml;icra2021.yml", n_agents=2)[0])
 
     def checkPlanner(self, planner_instance, *args, **kwargs):
         for env in self.envs:

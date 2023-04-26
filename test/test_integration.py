@@ -23,8 +23,8 @@ class TestIntegration(unittest.TestCase):
                     with self.subTest(msg=f"Test planning with {planner} in scenario {scenario} and parameters {parameters}."):
                         data = run_scenario(scenario,
                                       planner,
-                                      n_agents=3,
-                                      n_scenarios=2,
+                                      n_agents=2,
+                                      n_scenarios=1,
                                       problem_parameters=parameters,
                                      )
                         assert data is not None

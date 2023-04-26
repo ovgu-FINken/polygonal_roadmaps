@@ -209,8 +209,24 @@ class RoadmapEnvironment(Environment):
                                       working_area_y=wy,
                                       offset=offset,
                                       occupied_space=obstacles)
+        start_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in start_positions])
+        goal_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in goal_positions])
+
+        self._obstacles = obstacles
         
-        super().__init__(graph, start_positions, goal_positions, planning_problem_parameters=planning_problem_parameters)
+        super().__init__(graph, start_nodes, goal_nodes, planning_problem_parameters=planning_problem_parameters)
         
     def plot(self):
-        pass
+        import matplotlib.pyplot as plt
+        import geopandas as gpd
+        plt.figure()
+        inner = gpd.GeoSeries(n['geometry'].inner for _, n in self.g.nodes(data=True))
+        inner.plot(ax=plt.gca())
+        connection = gpd.GeoSeries(e['geometry'].connection for _, _, e in self.g.edges(data=True))
+        connection.plot(ax=plt.gca(), color='red')
+        obstacles = gpd.GeoSeries([self._obstacles])
+        obstacles.plot(ax=plt.gca(), color='gray')
+
+        plt.show()
+        plt.close()
+        

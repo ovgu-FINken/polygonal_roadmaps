@@ -178,6 +178,8 @@ def load_driving_swarm_scenarios(map_yml, scenario_yml, n_agents, index=None, pl
     generators = None
     if g["type"] == "square":
         generators = geometry.square_tiling(g["grid_size"], working_area_x=g["wx"], working_area_y=g["wy"])
+    if g["type"] == "hex":
+        generators = geometry.hexagon_tiling(g["grid_size"], working_area_x=g["wx"], working_area_y=g["wy"])
     env = RoadmapEnvironment(Path("benchmark") / "DrivingSwarm" / "maps" / map_yml, 
                              scenario["start"], scenario["goal"], 
                              planning_problem_parameters=planning_problem_parameters, 

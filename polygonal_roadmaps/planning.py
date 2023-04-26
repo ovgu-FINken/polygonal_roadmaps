@@ -863,9 +863,9 @@ class CCRPlanner(Planner):
         logging.info(f'qualities: {qualities}')
 
         # make the decision
-        decision = options[decision_function(qualities)]
+        decision = decision_function(qualities)
         logging.info(f'decision: {decision}')
-        self.implement_decision(decision)
+        self.implement_decision(options[decision])
         # create constraints from priority map
         return self.create_constraints_from_prio_map()
 
