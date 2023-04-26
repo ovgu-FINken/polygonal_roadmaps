@@ -1,0 +1,12 @@
+start:
+- 26
+- 63
+goal:
+- 63
+- 26
+generator: 
+  type: "square"
+  wx: [-1, 3.5]
+  wy: [-3, 1.5]
+  grid_size: 0.5
+  offset: 0.15

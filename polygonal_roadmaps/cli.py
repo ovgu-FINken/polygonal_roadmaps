@@ -1,4 +1,5 @@
 import argparse
+from typing import Iterable
 import pandas as pd
 import signal
 import yaml
@@ -8,8 +9,8 @@ import glob
 import resource
 from tqdm import tqdm
 from pathlib import Path
-from polygonal_roadmaps import planning, polygonal_roadmap
-from polygonal_roadmaps.environment import PlanningProblemParameters
+from polygonal_roadmaps import geometry, planning, polygonal_roadmap
+from polygonal_roadmaps.environment import PlanningProblemParameters, Environment, RoadmapEnvironment, MapfInfoEnvironment
 
 class TimeoutError(Exception):
     pass
@@ -158,31 +159,41 @@ def load_problem_parameters(problem_parameters:str|None):
         return PlanningProblemParameters(**yaml.safe_load(stream))
 
 
-def env_generator(scen_str, n_agents=10, index=None, problem_parameters:str|None=None):
+def env_generator(scen_str, n_agents=10, index=None, problem_parameters:str|None=None) -> Iterable[Environment]:
     problem_parameters = load_problem_parameters(problem_parameters)
+    envs: list[Environment] = []
     match scen_str.split(";"):
         case "MAPF", map_file, scen_type:
             envs = load_mapf_scenarios(map_file, scen_type, n_agents, index=index, planning_problem_parameters=problem_parameters)
-        case "DrivingSwarm", scenario_yml:
-            envs = load_driving_swarm_scenarios(scenario_yml, n_agents, index=index, planning_problem_parameters=problem_parameters)
+        case "DrivingSwarm", map_yml, scenario_yml:
+            envs = load_driving_swarm_scenarios(map_yml, scenario_yml, n_agents, index=index, planning_problem_parameters=problem_parameters)
     return envs
 
 
-def load_driving_swarm_scenarios(scenario_yml, n_agents, index=None):
+def load_driving_swarm_scenarios(map_yml, scenario_yml, n_agents, index=None, planning_problem_parameters=PlanningProblemParameters()) -> Iterable[Environment]:
     scenario = None
-    with open(scenario_yml) as stream:
+    with open(Path("benchmark") / "DrivingSwarm" / "scenarios" / scenario_yml) as stream:
         scenario = yaml.safe_load(stream)
-    return (polygonal_roadmap.RoadmapEnvironment(s["start"][:n_agents], s["goal"][:n_agents], **scenario["env_args"]) for s in scenario)
+    g = scenario["generator"]
+    generators = None
+    if g["type"] == "square":
+        generators = geometry.square_tiling(g["grid_size"], working_area_x=g["wx"], working_area_y=g["wy"])
+    env = RoadmapEnvironment(Path("benchmark") / "DrivingSwarm" / "maps" / map_yml, 
+                             scenario["start"], scenario["goal"], 
+                             planning_problem_parameters=planning_problem_parameters, 
+                             generator_points=generators, offset=g["offset"],
+                             wx=g["wx"], wy=g["wy"])
+    return [env]
 
 
-def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_problem_parameters=PlanningProblemParameters()):
+def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_problem_parameters=PlanningProblemParameters()) -> Iterable[Environment]:
     if index is None:
         scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
         # strip path from scenario
         scenarios = [f'{scentype}/' + s.split('/')[-1] for s in scenarios]
     else:
         scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
-    return (polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents, planning_problem_parameters=planning_problem_parameters) for scen in scenarios)
+    return (MapfInfoEnvironment(scen, n_agents=n_agents, planning_problem_parameters=planning_problem_parameters) for scen in scenarios)
     
 
 def run_one(planner, result_path=None, config=None):

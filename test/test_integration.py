@@ -10,7 +10,7 @@ from polygonal_roadmaps.cli import run_scenario
 
 class TestIntegration(unittest.TestCase):
     def setUp(self):
-        self.scenarios = ["MAPF;room-32-32-4;even", "MAPF;empty-8-8.map;even"]
+        self.scenarios = ["MAPF;room-32-32-4;even", "MAPF;empty-8-8.map;even", "DrivingSwarm;icra2021_map.yaml;icra2021.yml"]
         self.planners = ["CCR.yml", "CBS.yml", "PRIO.yml"]
         self.problem_parameters = ["default.yml", "h3.yml"]
         #TODO: All the Planners
