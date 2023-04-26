@@ -18,8 +18,6 @@ class PlanningProblemParameters:
     weight_name: str = "dist"
     wait_action_cost: float = 1.0001
     pad_path: bool = False
-    max_distance: int = 10
-
 
 
 def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
@@ -91,6 +89,7 @@ def gen_example_graph(a, b):
 
 class Environment():
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=PlanningProblemParameters()) -> None:
+        self.planning_horizon = len(graph.nodes())
         self.planning_problem_parameters = planning_problem_parameters
         self.g = graph
         self.state = start
@@ -130,7 +129,7 @@ class GraphEnvironment(Environment):
 
 
 class MapfInfoEnvironment(Environment):
-    def __init__(self, scenario_file, n_agents=None) -> None:
+    def __init__(self, scenario_file, n_agents=None, planning_problem_parameters=PlanningProblemParameters()) -> None:
         graph, start, goal = None, None, None
         df = pd.read_csv(Path("benchmark") / "scen" / scenario_file,
                          sep="\t",
@@ -154,7 +153,6 @@ class MapfInfoEnvironment(Environment):
         for g in goal:
             if g not in graph:
                 logging.error(f"goal {g} not in map {self.map_file}, value is {data[s[0]][s[1]]}")
-        planning_problem_parameters = PlanningProblemParameters(max_distance=2*(self.width+self.height))
         super().__init__(graph, start, goal, planning_problem_parameters=planning_problem_parameters)
 
     def get_background_matrix(self):
@@ -180,7 +178,7 @@ class MapfInfoEnvironment(Environment):
 
 
 class RoadmapEnvironment(Environment):
-    def __init__(self, map_path, start_positions, goal_positions, generator_points=None, wx:tuple[float,float]|None=None, wy:tuple[float,float]|None=None, offset:float=0.15):
+    def __init__(self, map_path, start_positions, goal_positions, generator_points=None, wx:tuple[float,float]|None=None, wy:tuple[float,float]|None=None, offset:float=0.15, planning_problem_parameters=PlanningProblemParameters()) -> None:
         """create an environment from robotics map with roadmap (voronoi based)
 
         :param map_path: path to map yaml
@@ -204,4 +202,4 @@ class RoadmapEnvironment(Environment):
                                       offset=offset,
                                       occupied_space=obstacles)
         
-        super().__init__(graph, start_positions, goal_positions)
+        super().__init__(graph, start_positions, goal_positions, planning_problem_parameters=planning_problem_parameters)

@@ -85,7 +85,7 @@ class TestLowLevelSearch(unittest.TestCase):
 
 class TestPrioritizedSearch(unittest.TestCase):
     def setUp(self):
-        self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'), planning_problem_parameters=PlanningProblemParameters(max_distance=12))
+        self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'))
 
     def testNoConflict(self):
         try:
@@ -105,7 +105,7 @@ class TestPrioritizedSearch(unittest.TestCase):
 
 class TestCBS(unittest.TestCase):
     def setUp(self):
-        self.environment = GraphEnvironment(graph=gen_example_graph(5, 2), start=('a', 'b'), goal=('b', 'a'), planning_problem_parameters=PlanningProblemParameters(max_distance=12))
+        self.environment = GraphEnvironment(graph=gen_example_graph(5, 2), start=('a', 'b'), goal=('b', 'a'))
 
     def test_compute_node_conflicts(self):
         path1 = [1, 2]
@@ -232,7 +232,7 @@ class TestCBS(unittest.TestCase):
         self.assertIn(best.solution, ([['a', 'b', 'f', 'g', 'd', 'e'], ['e', 'd', 'c', 'b', 'a']],
                       [['a', 'b', 'c', 'd', 'e'], ['e', 'd', 'g', 'f', 'b', 'a']]))
 
-        env = GraphEnvironment(gen_example_graph(5, 3), start=('b', 'e', 'a'), goal=('e', 'a', 'f'), planning_problem_parameters = PlanningProblemParameters(max_distance=28))
+        env = GraphEnvironment(gen_example_graph(5, 3), start=('b', 'e', 'a'), goal=('e', 'a', 'f'))
         cbs = planning.CBS(env)
         exception_raised = False
         try:

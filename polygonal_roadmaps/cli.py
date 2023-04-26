@@ -9,7 +9,7 @@ import resource
 from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import planning, polygonal_roadmap
-
+from polygonal_roadmaps.environment import PlanningProblemParameters
 
 class TimeoutError(Exception):
     pass
@@ -116,7 +116,7 @@ def run_all(args):
         resource.setrlimit(resource.RLIMIT_CPU, (limit, hardlimit))
     for planner in args.planner:
         for scenario in args.scenarios:
-            run_scenario(scenario, planner, n_agents=args.n_agents, index=args.index)
+            run_scenario(scenario, planner, n_agents=args.n_agents, index=args.index, problem_parameters=args.problem_parameters)
 
 
 def create_planner_from_config_file(config_file, env):
@@ -135,12 +135,12 @@ def create_planner_from_config(config, env):
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:None|int=None, n_scenarios:int=25):
+def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:None|int=None, n_scenarios:int=25, problem_parameters:str|None=None):
     planner_file = Path("benchmark") / 'planner_config' / planner_config_file
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
     data = []
-    for i, env in enumerate(env_generator(scen_str, n_agents, index=index)):
+    for i, env in enumerate(env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)):
         if i>=n_scenarios:
             break
         planner = create_planner_from_config(planner_config, env)
@@ -151,12 +151,20 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
     return data
 
 
-def env_generator(scen_str, n_agents=10, index=None):
+def load_problem_parameters(problem_parameters:str|None):
+    if problem_parameters is None:
+        return PlanningProblemParameters()
+    with open(Path("benchmark") / 'problem_parameters' / problem_parameters) as stream:
+        return PlanningProblemParameters(**yaml.safe_load(stream))
+
+
+def env_generator(scen_str, n_agents=10, index=None, problem_parameters:str|None=None):
+    problem_parameters = load_problem_parameters(problem_parameters)
     match scen_str.split(";"):
         case "MAPF", map_file, scen_type:
-            envs = load_mapf_scenarios(map_file, scen_type, n_agents, index=index)
+            envs = load_mapf_scenarios(map_file, scen_type, n_agents, index=index, planning_problem_parameters=problem_parameters)
         case "DrivingSwarm", scenario_yml:
-            envs = load_driving_swarm_scenarios(scenario_yml, n_agents, index=index)
+            envs = load_driving_swarm_scenarios(scenario_yml, n_agents, index=index, planning_problem_parameters=problem_parameters)
     return envs
 
 
@@ -164,17 +172,17 @@ def load_driving_swarm_scenarios(scenario_yml, n_agents, index=None):
     scenario = None
     with open(scenario_yml) as stream:
         scenario = yaml.safe_load(stream)
-    return (polygonal_roadmap.RoadmapEnvironment(start_positions[:n_agents], goal_positinos[:n_agents], **scenario["env_args"]) for scen in scenarios)
+    return (polygonal_roadmap.RoadmapEnvironment(s["start"][:n_agents], s["goal"][:n_agents], **scenario["env_args"]) for s in scenario)
 
 
-def load_mapf_scenarios(map_file, scentype, n_agents, index=None):
+def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_problem_parameters=PlanningProblemParameters()):
     if index is None:
         scenarios = glob.glob(f"benchmark/scen/{scentype}/{map_file}-{scentype}-*.scen")
         # strip path from scenario
         scenarios = [f'{scentype}/' + s.split('/')[-1] for s in scenarios]
     else:
         scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
-    return (polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents) for scen in scenarios)
+    return (polygonal_roadmap.MapfInfoEnvironment(scen, n_agents=n_agents, planning_problem_parameters=planning_problem_parameters) for scen in scenarios)
     
 
 def run_one(planner, result_path=None, config=None):
@@ -228,6 +236,7 @@ def cli_main() -> None:
     parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
     parser.add_argument("-planner", type=str, nargs='+', required=True)
     parser.add_argument("-scenarios", type=str, nargs='+', required=True)
+    parser.add_argument("-problem_parameters", type=str, default=None)
     parser.add_argument("-n_agents", type=int, default=10)
     parser.add_argument("-index", type=int, default=None)
     parser.add_argument("-timelimit", type=int, default=None, help="Memory Limit in Gb")

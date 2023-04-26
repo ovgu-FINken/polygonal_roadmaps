@@ -510,7 +510,7 @@ class CBS:
         self.duplicate_counter = 0
         spacetime_kwargs = {
             'wait_action_cost': self.env.planning_problem_parameters.wait_action_cost,
-            'limit': self.env.planning_problem_parameters.max_distance,
+            'limit': self.env.planning_horizon,
         }
         self.cache = SpaceTimeAStarCache(self.g, [g for _, g in (self.start_goal)], kwargs=spacetime_kwargs)
 
@@ -730,12 +730,12 @@ def prioritized_plans(env: Environment,
     planning_problem_parameters = env.planning_problem_parameters
     spacetime_kwargs = {
         'wait_action_cost': planning_problem_parameters.wait_action_cost,
-        'limit': planning_problem_parameters.max_distance,
+        'limit': env.planning_horizon,
     }
     cache = SpaceTimeAStarCache(env.get_graph(), kwargs=spacetime_kwargs)
     solution : list[list[int]] = []
     compute_normalized_weight(env.get_graph(), planning_problem_parameters.weight_name)
-    pad_limit : Union[int, None] = planning_problem_parameters.max_distance
+    pad_limit : Union[int, None] = env.planning_horizon
     if not planning_problem_parameters.pad_path:
         pad_limit = None
     if planning_problem_parameters.conflict_horizon is not None:
@@ -775,7 +775,7 @@ class CCRPlanner(Planner):
         self.priorities:list[int|str] = []
         self.priorities_in:list[int|str] = []
         astar_kwargs = {
-            'limit': self.environment.planning_problem_parameters.max_distance,
+            'limit': self.environment.planning_horizon,
             'wait_action_cost': self.environment.planning_problem_parameters.wait_action_cost,
         }
         self.cache = SpaceTimeAStarCache(self.g, kwargs=astar_kwargs)
@@ -831,7 +831,7 @@ class CCRPlanner(Planner):
     def find_conflicts(self, solution):
         if not solution_valid(solution):
             logging.info(f'invalid solution: {solution}')
-        limit = self.environment.planning_problem_parameters.max_distance if self.environment.planning_problem_parameters.pad_path else None
+        limit = self.environment.planning_horizon if self.environment.planning_problem_parameters.pad_path else None
         if self.environment.planning_problem_parameters.conflict_horizon is not None:
             limit = self.environment.planning_problem_parameters.conflict_horizon
         conflicts = compute_all_k_conflicts(solution, limit=limit, k=self.environment.planning_problem_parameters.k_robustness)
