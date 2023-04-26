@@ -144,6 +144,7 @@ def read_map(info_file):
     if img_file[0] not in ['/', '~']:
         img_file = os.path.join(os.path.dirname(info_file), img_file)
     img = io.imread(img_file).transpose()
+    img = np.array(img) # makes sure the data can be overwritten
     return img, info
 
 
