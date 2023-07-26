@@ -126,11 +126,13 @@ def create_planner_from_config_file(config_file, env):
     return create_planner_from_config(planner_config, env)
 
 
-def create_planner_from_config(config, env):
+def create_planner_from_config(config, env) -> planning.Planner:
     if config['planner'] == 'CBS':
         return planning.CBSPlanner(env, **config['planner_args'])
     elif config['planner'] == 'CCR':
         return planning.CCRPlanner(env, **config['planner_args'])
+    elif config['planner'] == 'CCRv2':
+        return planning.CCRv2(env, **config['planner_args'])
     elif config['planner'] == 'PrioritizedPlanner':
         return planning.PrioritizedPlanner(env, **config['planner_args'])
     raise NotImplementedError(f"planner {config['planner']} does not exist.")

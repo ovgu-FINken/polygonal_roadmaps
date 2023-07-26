@@ -180,8 +180,8 @@ class MapfInfoEnvironment(Environment):
 class RoadmapEnvironment(Environment):
     def __init__(self, 
                  map_path,
-                 start_positions,
-                 goal_positions, 
+                 start_positions:tuple[float],
+                 goal_positions:tuple[float], 
                  generator_points=None, 
                  wx:tuple[float,float]|None=None, 
                  wy:tuple[float,float]|None=None, 

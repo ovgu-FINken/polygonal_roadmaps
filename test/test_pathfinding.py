@@ -81,6 +81,26 @@ class TestLowLevelSearch(unittest.TestCase):
         path, _ = planning.spacetime_astar(self.graph, 'd', 'b', node_constraints=[('b', 3)])
         expected = list('dcb')
         self.assertEqual(path, expected)
+        
+    def testComputeAllKConflicts(self):
+        p1 = [1, 2, 3, 4, 5]
+        p2 = [5, 4, 3, 2, 1]
+        conflicts = planning.compute_all_k_conflicts([p1, p2], limit=10, k=1)
+        # there should be a k=0 conflict at node 3:
+        expected = frozenset([ planning.Conflict(k=0, conflicting_agents=frozenset({
+            planning.NodeConstraint(agent=1, time=2, node=3),
+            planning.NodeConstraint(agent=0, time=2, node=3)}) )
+        ])
+        self.assertEqual(conflicts, expected)
+        p1 = [1, 1, 1, 3, 1, 1]
+        p2 = [2, 2, 3, 2, 2]
+        conflicts = planning.compute_all_k_conflicts([p1, p2], limit=10, k=1)
+        # there should be a k=1 conflict at node 3:
+        expected = frozenset([ planning.Conflict(k=1, conflicting_agents=frozenset({
+            planning.NodeConstraint(agent=1, time=2, node=3),
+            planning.NodeConstraint(agent=0, time=3, node=3)}) )
+        ])
+        self.assertEqual(conflicts, expected)
 
 
 class TestPrioritizedSearch(unittest.TestCase):
@@ -102,6 +122,163 @@ class TestPrioritizedSearch(unittest.TestCase):
             self.assertTrue(False, msg="exception should not be raised, as path is valid")
         self.assertEqual(solution, [list('abcde'), list('edgfba')])
 
+
+class TestCCRv2(unittest.TestCase):
+    def setUp(self):
+        self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'))
+
+    def testNoConflict(self):
+        planner = planning.CCRv2(self.env)
+        plan = planner.create_plan()
+        reference = list(zip(list('bcde') + [None], list('gfba') + [None]))
+        self.assertEqual(plan, reference)
+
+    def testConflict(self):
+        self.env.state = ('a', 'e')
+        planner = planning.CCRv2(self.env)
+        plan = planner.create_plan()
+        reference = list(zip(list('abcde') + [None], list('edcba')+ [None]))
+        self.assertTrue(planner.agents[0].is_consistent())
+        self.assertTrue(planner.agents[1].is_consistent())
+        self.assertEqual(len(planner.agents[0].get_conflicts()), 0)
+        self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
+        self.assertNotEqual(plan, reference)
+        
+    def testAgentInit(self):
+        self.env.state = ('a', 'e')
+        planner = planning.CCRv2(self.env)
+        self.assertListEqual(planner.agents[0].plan, list('abcde'))
+        self.assertTrue(planner.agents[0].is_consistent())
+        self.assertFalse(planner.agents[0].get_conflicts())
+        
+    def testCheckConflicts(self):
+        self.env.state = ('a', 'e')
+        planner = planning.CCRv2(self.env)
+        # check the assumption of the test
+        self.assertListEqual(planner.agents[0].plan, list('abcde'))
+        # create a conflict at node c
+        planner.agents[0].update_other_paths({1: list('edcba')})
+        self.assertGreater(len(planner.agents[0].conflicts), 0)
+        # still the conflicts is consistent with the belief of the agent
+        # the node has not been visited yet by CDM and there is no belief for this state
+        self.assertTrue(planner.agents[0].is_consistent())
+
+        # no we add the belief state for the node C
+        # b-c has lower priority than c-d, thus for agent[0] this is not consistent
+        bs = planning.BeliefState('c', {'b': 0.5, 'd': 1.5})
+        planner.agents[0].set_belief('c', bs)
+        self.assertFalse(planner.agents[0].is_consistent())
+
+        # if we reverse the priorities, the agent is consistent again
+        bs = planning.BeliefState('c', {'b': 1.5, 'd': 0.5})
+        planner.agents[0].set_belief('c', bs)
+        self.assertTrue(planner.agents[0].is_consistent())
+                 
+    def testUpdatePath(self):
+        planner = planning.CCRv2(self.env)
+        # should not add own path
+        planner.agents[0].update_other_paths({0: list('abcde')})
+        self.assertEqual(planner.agents[0].other_paths, {})
+        # other plan ends up in other_paths
+        planner.agents[0].plan = list('edcba')
+        planner.agents[0].update_other_paths({1: list('edcba')})
+        self.assertEqual(planner.agents[0].other_paths, {1: list('edcba')})
+        # plans get overwritten when updated
+        planner.agents[0].update_other_paths({1: list('abcde')})
+        self.assertEqual(planner.agents[0].other_paths, {1: list('abcde')})
+
+    def testCDMUpdate(self):
+        self.env.state = ('a', 'e')
+        planner = planning.CCRv2(self.env)
+        # check the assumption of the test
+        self.assertListEqual(planner.agents[0].plan, list('abcde'))
+        self.assertListEqual(planner.agents[1].plan, list('edcba'))
+        # intially plans are consistent, because there are conflicts, but no belief about priorities
+        planner.update_all_paths()
+        self.assertGreaterEqual(len(planner.agents[0].get_conflicts()), 0)
+        self.assertGreaterEqual(len(planner.agents[1].get_conflicts()), 0)
+        # making consistent does not lead to change
+        self.assertFalse(planner.make_all_plans_consistent())
+        # cdm is performed:
+        node, _ = planner.make_cdm_decision()
+        decsion = planning.BeliefState('c', {'b': 0.5, 'd': 1.5})
+        for a in planner.agents:
+            a.set_belief(node, decsion)
+        # now the plan for a[0] is not consistent
+        self.assertFalse(planner.agents[0].is_consistent())
+        # plan for a[1] is still consistent, because he gets prio
+        self.assertTrue(planner.agents[1].is_consistent())
+        planner.make_all_plans_consistent()
+        self.assertTrue(planner.agents[0].is_consistent())
+        self.assertTrue(planner.agents[1].is_consistent())
+        
+    def testMakePlansConsistent(self):
+        self.env.state = ('a', 'e')
+        planner = planning.CCRv2(self.env)
+        planner.update_all_paths()
+        # cdm is performed:
+        node, _ = planner.make_cdm_decision()
+        decsion = planning.BeliefState('c', {'b': 0.5, 'd': 1.5})
+        for a in planner.agents:
+            a.set_belief(node, decsion)
+        # check the assumption of the test
+        # now the plan for a[0] is not consistent
+        self.assertFalse(planner.agents[0].is_consistent())
+        # plan for a[1] is still consistent, because he gets prio
+        self.assertTrue(planner.agents[1].is_consistent())
+        p0 = planner.agents[0].get_plan()
+        changed = planner.agents[0].make_plan_consistent(recurse=True)
+        self.assertTrue(changed)
+        self.assertIn(planning.NodeConstraint(agent=0, time=2, node='c'), planner.agents[0].constraints)
+        self.assertIn(planning.NodeConstraint(agent=0, time=1, node='c'), planner.agents[0].constraints)
+        self.assertIn(planning.NodeConstraint(agent=0, time=3, node='c'), planner.agents[0].constraints)
+        p1 = planner.agents[0].get_plan()
+        self.assertNotEqual(p0, p1)
+        self.assertEqual(p1, list('abfgde'))
+        self.assertTrue(planner.agents[0].is_consistent())
+        
+        
+    def testCDMOpinion(self):
+        self.env.state = ('a', 'e')
+        planner = planning.CCRv2(self.env)
+        # check the assumption of the test
+        # check the assumption of the test
+        self.assertListEqual(planner.agents[0].plan, list('abcde'))
+        self.assertListEqual(planner.agents[1].plan, list('edcba'))
+        planner.update_all_paths()
+        # conflcit at node c
+        # check the opinion function:
+        bs = planner.agents[0].get_cdm_opinion('c')
+        self.assertEqual(bs.state, 'c')
+        self.assertIn('c', bs.priorities)
+        self.assertIn('b', bs.priorities)
+        self.assertIn('d', bs.priorities)
+        # cdm is performed:
+        node, decision = planner.make_cdm_decision()
+        self.assertEqual(node, 'c') # only node with a conflict
+        self.assertTrue(type(decision) is planning.BeliefState)
+        self.assertEqual(decision.state, 'c')
+        self.assertIn('c', decision.priorities)        
+        self.assertIn('b', decision.priorities)        
+        self.assertIn('d', decision.priorities)        
+    
+    def testBeliefState(self):
+        bs1 = planning.BeliefState('c', {'b': 0.5, 'd': 1.5})
+        bs2 = planning.BeliefState('c', {'b': 1.5, 'd': 0.5})
+        bs_plus = bs1 + bs2
+        self.assertDictEqual(bs_plus.priorities, {'b': 2.0, 'd': 2.0, 'c': np.inf})
+        bs_mul = bs_plus * 0.5
+        self.assertDictEqual(bs_mul.priorities, {'b': 1.0, 'd': 1.0, 'c': np.inf})
+
+        bs3 = planning.BeliefState('c', {})
+        bs_plus = bs1 + bs3
+        self.assertDictEqual(bs_plus.priorities, bs1.priorities)
+        
+        bs_plus = bs3 + bs1
+        self.assertDictEqual(bs_plus.priorities, bs1.priorities)
+
+        
+         
 
 class TestCBS(unittest.TestCase):
     def setUp(self):

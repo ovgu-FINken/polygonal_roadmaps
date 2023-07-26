@@ -1,6 +1,6 @@
 from asyncio.log import logger
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Iterable, Protocol, Any
 import numpy as np
 from numpy.typing import ArrayLike
 import networkx as nx
@@ -14,12 +14,10 @@ import copy
 from polygonal_roadmaps.environment import Environment
 import logging
 
-
 class Planner(Protocol):
     environment: Environment
     replan_required: bool
-    history: list[list[int]]
-    
+    history: list[list[int | None]]
     def __init__(self, environment: Environment, **kwargs: dict) -> None:
         """all plans should be initialized with an environment, general parameters and problem specific parameters passed as keyword arguments
 
@@ -28,7 +26,7 @@ class Planner(Protocol):
         """
         ...
     
-    def create_plan(self) -> list[list[int]]:
+    def create_plan(self) -> list[list[int | None]]:
         ...
 
 
@@ -39,7 +37,7 @@ class NodeConstraint:
     node: int
 
 
-def pred_to_list(g, pred, start, goal):
+def pred_to_list(g, pred, start, goal) -> list:
     if goal is None:
         logging.debug("goal was NONE, this means no path was found")
         return [start]
@@ -98,7 +96,7 @@ class Conflict:
     k: int
     conflicting_agents: frozenset
 
-    def generate_constraints(self):
+    def generate_constraints(self) -> set[frozenset]:
         """ generate a set of constraints for each conflicting agent, which resolves the conflict
         i.e., one agent can stay, all others have to move to resolve the conflict
         in a k=0 conflict, this means for each agent a set containing the other agents
@@ -110,7 +108,7 @@ class Conflict:
         return {frozenset(self.conflicting_agents - {t_agent}), frozenset({t_agent})}
 
 
-def compute_k_robustness_conflicts(paths, limit: Union[int, None] = None, k: int = 0, node_occupancy: Union[dict, None] = None):
+def compute_k_robustness_conflicts(paths, limit: Union[int, None] = None, k: int = 0, node_occupancy: Union[dict, None] = None) -> set[Conflict]:
     if node_occupancy is None:
         node_occupancy = compute_node_occupancy(paths, limit=limit)
 
@@ -135,13 +133,12 @@ def compute_k_robustness_conflicts(paths, limit: Union[int, None] = None, k: int
             # or all the other agents could move to resolve the conflict
             # however there is a special case: if t - k == 0 the other agents can not move
             # (because the starting position is fixed)
-            if t != k:
+            if t - k > 0:
                 constraints |= {NodeConstraint(time=t - k, node=node, agent=j) for j in conflicting_agents}
             conflicts.append(Conflict(k=k, conflicting_agents=frozenset(constraints)))
     return set(conflicts)
 
-
-def compute_solution_robustness(solution, limit: Union[int, None] = None):
+def compute_solution_robustness(solution, limit: Union[int, None] = None) -> int:
     maximum = max([len(path) for path in solution])
     for k in range(maximum):
         conflits = compute_all_k_conflicts(solution, limit=limit, k=k)
@@ -150,7 +147,7 @@ def compute_solution_robustness(solution, limit: Union[int, None] = None):
     return maximum
 
 
-def compute_all_k_conflicts(solution, limit: Union[int, None] = None, k=1):
+def compute_all_k_conflicts(solution, limit: Union[int, None] = None, k=1) -> frozenset[Conflict]:
     """compute the conflicts present in a solution
     Each conflict is a set of triples {(agent, time, node)
     - out of each conflict at least one agent has to move away to resolve the conflict
@@ -166,7 +163,7 @@ def compute_all_k_conflicts(solution, limit: Union[int, None] = None, k=1):
     return frozenset().union(*conflicts)
 
 
-def spatial_astar(G, source, target, weight=None):
+def spatial_astar(G, source, target, weight=None) -> list:
     def spatial_heuristic(u, v):
         return np.linalg.norm(np.array(G.nodes()[u]['pos']) - np.array(G.nodes()[v]['pos']))
     return nx.astar_path(G, source=source, target=target, heuristic=spatial_heuristic, weight=weight)
@@ -184,7 +181,7 @@ def temporal_node_list(G, limit, node_constraints):
     return nodelist
 
 
-def spacetime_astar(G, source, target, spacetime_heuristic=None, limit=100, node_constraints=None, wait_action_cost=1.0001):
+def spacetime_astar(G, source, target, spacetime_heuristic=None, limit=100, node_constraints=None, wait_action_cost=1.0001) -> tuple[list, float]:
     # we search the path one time with normal A*, so we know that all nodes exist and are connected
     if not node_constraints:
         spatial_path = spatial_astar(G, source, target)
@@ -450,10 +447,21 @@ class SpaceTimeAStarCache:
         if not state_only:
             self.cache = {}
 
-    def get_path(self, start, goal, node_constraints):
+    def get_path(self, start, goal, node_constraints) -> tuple[list, float]:
         """try to look up a path from start to goal in the cache with specific contstraints
         if the path was searched before, we will return the path without new computation
         """
+        def nc_tuples(node_constraints):
+            nc = set()
+            for c in node_constraints:
+                if isinstance(c, tuple):
+                    nc.add(c)
+                elif isinstance(c, NodeConstraint):
+                    nc.add((c.node, c.time))
+                else:
+                    raise ValueError(f"node_constraints must be a set of tuples or NodeConstraints, not {type(c)}")
+            return frozenset(nc)
+        node_constraints = nc_tuples(node_constraints) 
         if start is None:
             return [], 0
         if (start, goal, node_constraints) in self.cache:
@@ -604,7 +612,7 @@ class CBS:
         logging.debug(f"after: {self.best.fitness}")
         node.children = (*node.children, fake_node)
 
-    def compute_node_solution(self, node: CBSNode, max_agents=None):
+    def compute_node_solution(self, node: CBSNode, max_agents=None) -> tuple[list, float]:
         solution = []
         if max_agents is None:
             max_agents = len(self.agents)
@@ -1049,5 +1057,298 @@ class CBSPlanner(Planner):
         return list(ret)
 
 
+class BeliefState:
+    """Belief state of an agent"""
+
+    def __init__(self, state, priorities):
+        self.state = state
+        self.priorities = priorities
+        self.priorities[state] = np.inf
+
+    def __add__(self, other):
+        # if we add a scalar number, we add it to all priorities
+        if isinstance(other, (int, float)):
+            return BeliefState(self.state, {k: v + other for k, v in self.priorities.items()})
+        # if we add another belief state, we add the priorities
+        if isinstance(other, BeliefState):
+            bs = BeliefState(self.state, {})
+            for k in self.priorities.keys() | other.priorities.keys():
+                v1 = 0 if k not in self.priorities else self.priorities[k]
+                v2 = 0 if k not in other.priorities else other.priorities[k]
+                bs.priorities[k] = v1 + v2
+            return bs
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
+    
+    def __mul__(self, other):
+        # if we multiply a scalar number, we multiply it to all priorities
+        if isinstance(other, (int, float)):
+            return BeliefState(self.state, {k: v * other for k, v in self.priorities.items()})
+        raise TypeError(f"unsupported operand type(s) for +: '{type(self)}' and '{type(other)}'")
+    
+    def __rmul__(self, other):
+        return self.__mul__(other)
+    
+    def __radd__(self, other):
+        return self.__add__(other)
+
+class CCRAgent:
+    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, sta_star_cache:SpaceTimeAStarCache):
+        self.g = graph
+        self.state = state
+        self.goal = goal
+        self.planning_problem_parameters = planning_problem_parameters
+        self.belief: dict[int, BeliefState] = {}
+        self.other_paths: dict[int, list] = {}
+        self.index = index
+        self.constraints: set[NodeConstraint] = set()
+        self.plan: list[int] = []
+        self.cache = sta_star_cache
+        self.cost = np.inf
+        self.conflicts = frozenset()
+        self.consistent = False
+        self.compute_plan()
+        
+    def update_other_paths(self, other_paths):
+        self._update_other_paths(other_paths)
+        self.get_conflicts()
+
+    def _update_other_paths(self, other_paths):
+        op = {k: v for k, v in other_paths.items() if k != self.index}
+        self.other_paths |= op
+        
+    def update_state(self, state):
+        self.state = state
+
+    def get_plan(self) -> list[int]:
+        if self.state is None:
+            return []
+        return self.plan
+    
+    def _get_conflicts(self, path):
+        conflicts = compute_all_k_conflicts([self.plan, path], limit=self.planning_problem_parameters.conflict_horizon, k=self.planning_problem_parameters.k_robustness)
+        self.conflicts = frozenset().union(conflicts, self.conflicts)
+
+    def get_conflicts(self):
+        self.conflicts = frozenset()
+        for _, path in self.other_paths.items():
+            self._get_conflicts(path)
+        return self.conflicts
+    
+    def check_privileges(self, conflict, other_plans):
+        """Check if the agent has to give right of way according to its belief
+        
+        :param other_plans: list of plans of other agents
+        :return: True if the agent has right of way, False otherwise
+        """
+        for ca in conflict.concflicting_agents:
+            # we need to get the other agent involved in the conflict
+            if ca.agent == self.index:
+                continue
+            # we check if there is a belief state for this node
+            if ca.node not in self.belief:
+                # if there is no belief state, we assume the agent has right of way in this conflict
+                return True
+
+            # there should be no conflicts at t=0
+            assert ca.time > 0
+
+            # check if we stayed in the node from t-1 to t
+            # if we stayed in the node -> automatically have right of way
+            if self.plan[ca.time - 1] == self.plan[ca.time]:
+                return True
+
+            # other agent stayed at the node, we need to give way
+            if other_plans[ca.agent][ca.time - 1] == other_plans[ca.agent][ca.time]:
+                self.constraints |= NodeConstraint(agent=self.index, time=ca.time, node=ca.node)
+                return False
+                
+            # now we need to check which  agent has right of way
+            # right of way is determined by the previous node of the agent, and the priorites of the edges
+            belief = self.belief[ca.node]
+            own_prio = belief.priorities[self.plan[ca.time - 1]]
+            other_prio = belief.priorities[other_plans[ca.agent][ca.time - 1]]
+            if own_prio > other_prio:
+                return True
+            self.constraints |= NodeConstraint(agent=self.index, time=ca.time, node=ca.node)
+            return False
+
+
+    def get_resolving_constraints(self, conflict) -> frozenset:
+        """Check if a conflict is consistent with the agents belief and return the first violated constraint"""
+        for ca in conflict.conflicting_agents:
+            if ca.agent == self.index:
+                continue
+            if ca.node not in self.belief:
+                continue
+            # check who has priority:
+            own_prio = self.belief[ca.node].priorities[self.plan[ca.time - 1]]
+            other_prio = self.belief[ca.node].priorities[self.other_paths[ca.agent][ca.time - 1]]
+            if other_prio > own_prio:
+                k = self.planning_problem_parameters.k_robustness
+                t_min = max(0, ca.time - k)
+                t_max = ca.time + k + 1
+                return frozenset( NodeConstraint(agent=self.index, time=t, node=ca.node) for t in range(t_min, t_max) )
+        return frozenset()
+    
+    def is_conflict_consistent(self, conflict):
+        return not len(self.get_resolving_constraints(conflict))
+    
+    def is_consistent(self):
+        conflicts = self.get_conflicts()
+        if not len(conflicts):
+            return True
+        return all(self.is_conflict_consistent(c) for c in conflicts)
+    
+    def compute_plan(self):
+        self.plan, self.cost = self.cache.get_path(self.state, self.goal, frozenset(self.constraints))
+        
+    def make_plan_consistent(self, recurse=True):
+        """Update the plan of an agent
+        When other agents plans are passed, the agent will respect their right of way according to its belief
+
+        In addition, the agent will return True, if there is a conflict which has no resolution, or False if there is no conflict
+
+        :param other_plans: list of plans of other agents
+        """
+        conflicts = self.get_conflicts()
+        if not len(conflicts):
+            return False
+        self.consistent = False
+        constraints = set()
+        for c in conflicts:
+            if self.is_conflict_consistent(c):
+                continue
+            constraints |= self.get_resolving_constraints(c)
+            
+        if len(constraints):
+            self.constraints |= constraints
+            self.compute_plan()
+            if recurse:
+                self.make_plan_consistent()
+        self.consistent = True
+        return True
+
+    def get_cdm_node(self) -> int|None:
+        if not len(self.get_conflicts()):
+            return None
+        if not self.is_consistent():
+            return None
+        # just return the first node with a conflict
+        nodes = []
+        for c in self.get_conflicts():
+            for ca in c.conflicting_agents:
+                if ca.agent == self.index:
+                    nodes.append(ca.node)
+        # randomly pick one of the nodes
+        return np.random.choice(nodes)
+    
+    def compute_quality(self, node:int, neighbour:int)->float:
+        return np.random.rand()
+    
+    def get_cdm_opinion(self, node) -> BeliefState:
+        """Generate a tuple of qualities for each edge going to the node
+
+        :param node: the node in the graph which we make a decision for
+        :return: tuple of qualities for each edge going to the node
+        """
+        # get all edges going to the node
+        edges = self.g.in_edges(node)
+        # compute qualities for each edge
+        qualities = [self.compute_quality(e[0], e[1]) for e in edges]
+        bs = BeliefState(node, {e[0]: q for e, q in zip(edges, qualities)}) 
+        if node not in self.belief:
+            return bs
+        return 0.5 * bs + 0.5 * self.belief[node]
+
+    def set_belief(self, node, belief):
+        self.belief[node] = belief
+
+
+class CCRv2(Planner):
+    def __init__(self, environment: Environment, **kwargs) -> None:
+        # initialize the planner.
+        # if the horizon is not None, we want to replan after execution of one step
+        self.environment = environment
+        self.replan_required = self.environment.planning_problem_parameters.conflict_horizon is None
+        self.history = []
+
+        self.g = self.environment.get_graph().to_directed()
+        compute_normalized_weight(self.g, self.environment.planning_problem_parameters.weight_name)
+        self.weight = "weight"
+        astar_kwargs = {
+            'limit': self.environment.planning_horizon,
+            'wait_action_cost': self.environment.planning_problem_parameters.wait_action_cost,
+        }
+        self.cache = SpaceTimeAStarCache(self.g, kwargs=astar_kwargs)
+        
+        self.agents = [
+            CCRAgent(self.g, sg[0], sg[1], self.environment.planning_problem_parameters, i, self.cache)
+                for i, sg in enumerate(self.environment.get_state_goal_tuples())
+                ]
+        
+        
+    def make_cdm_decision(self):
+        node = self.pick_cdm_node()
+        decision = self.agents[0].get_cdm_opinion(node)
+        for a in self.agents[1:]:
+            decision += a.get_cdm_opinion(node)
+        decision = decision * (1.0 / len(self.agents))
+        for a in self.agents:
+            a.set_belief(node, decision)
+        return node, decision
+
+    def pick_cdm_node(self):
+        # get random node for cdm
+        nodes = [a.get_cdm_node() for a in self.agents]
+        return np.random.choice([n for n in nodes if n is not None])
+    
+
+    
+    def planning_loop(self):
+        changed = True
+        while changed:
+            # update other paths
+            self.update_all_paths()
+            # make plans consistent
+            changed = self.make_all_plans_consistent()
+            # make cdm decision
+            if not changed:
+                conflicts = [bool(len(a.get_conflicts())) for a in self.agents]
+                if not any(conflicts):
+                    return
+                self.make_cdm_decision()
+                changed = True
+
+    def update_all_paths(self):
+        self.plans = {a.index: a.get_plan() for a in self.agents}
+        for a in self.agents:
+            a.update_other_paths(self.plans)
+
+    def make_all_plans_consistent(self):
+        changed = False
+        for a in self.agents:
+            if not a.is_consistent():
+                # this will change plans
+                changed = True
+                a.make_plan_consistent()
+        return changed
+                
+    def create_plan(self, *_) -> list[list[int | None]]:
+        """Create a plan for all agents
+        
+        :return: list of plans for all agents
+        """
+        self.planning_loop()
+
+
+
+        plans = [agent.get_plan() for agent in self.agents]
+        plans = [p + [None] for p in plans]
+        ret = zip_longest(*plans, fillvalue=None)
+        self.history.append({"solution": plans})
+        return list(ret)
+
+
 if __name__ == "__main__":
     pass
+
