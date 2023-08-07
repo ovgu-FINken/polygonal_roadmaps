@@ -218,10 +218,11 @@ class RoadmapEnvironment(Environment):
         
         super().__init__(graph, start_nodes, goal_nodes, planning_problem_parameters=planning_problem_parameters)
         
-    def plot(self):
+    def plot(self, show=True, paths=None):
         import matplotlib.pyplot as plt
         import geopandas as gpd
-        plt.figure()
+        if show:
+            plt.figure()
         inner = gpd.GeoSeries(n['geometry'].inner for _, n in self.g.nodes(data=True))
         inner.plot(ax=plt.gca(), alpha=0.5)
         connection = gpd.GeoSeries(e['geometry'].connection for _, _, e in self.g.edges(data=True))
@@ -233,6 +234,11 @@ class RoadmapEnvironment(Environment):
         goal = gpd.GeoSeries([geometry.Point(x, y) for x, y, *_ in self._goal_positions])
         goal.plot(ax=plt.gca(), color='red')
 
-        plt.show()
-        plt.close()
+        if paths is not None:
+            for path in paths:
+                path = gpd.GeoSeries([geometry.LineString([self.g.nodes()[n]['geometry'].center for n in path if n is not None])])
+                path.plot(ax=plt.gca(), color='blue')
+        if show:
+            plt.show()
+            plt.close()
         

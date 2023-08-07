@@ -1185,8 +1185,8 @@ class CCRAgent:
             other_prio = self.belief[ca.node].priorities[self.other_paths[ca.agent][ca.time - 1]]
             if other_prio > own_prio:
                 k = self.planning_problem_parameters.k_robustness
-                t_min = max(0, ca.time - k)
-                t_max = ca.time + k + 1
+                t_min = max(1, ca.time - k)
+                t_max = min(ca.time + k + 1, len(self.plan))
                 return frozenset( NodeConstraint(agent=self.index, time=t, node=ca.node) for t in range(t_min, t_max) )
         return frozenset()
     
@@ -1228,22 +1228,20 @@ class CCRAgent:
         self.consistent = True
         return True
 
-    def get_cdm_node(self) -> int|None:
+    def get_cdm_node(self) -> set[Any]:
         if not len(self.get_conflicts()):
-            return None
+            return set()
         if not self.is_consistent():
-            return None
-        # just return the first node with a conflict
-        nodes = []
+            return set()
+        # just return the nodes with a conflict
+        nodes = set()
         for c in self.get_conflicts():
             for ca in c.conflicting_agents:
                 if ca.agent == self.index:
-                    nodes.append(ca.node)
+                    nodes.add(ca.node)
         # randomly pick one of the nodes
-        return np.random.choice(nodes)
+        return nodes
     
-    def compute_quality(self, node:int, neighbour:int)->float:
-        return np.random.rand()
     
     def get_cdm_opinion(self, node) -> BeliefState:
         """Generate a tuple of qualities for each edge going to the node
@@ -1252,13 +1250,67 @@ class CCRAgent:
         :return: tuple of qualities for each edge going to the node
         """
         # get all edges going to the node
-        edges = self.g.in_edges(node)
-        # compute qualities for each edge
-        qualities = [self.compute_quality(e[0], e[1]) for e in edges]
-        bs = BeliefState(node, {e[0]: q for e, q in zip(edges, qualities)}) 
+        bs = self.compute_qualities(node) 
         if node not in self.belief:
             return bs
         return 0.5 * bs + 0.5 * self.belief[node]
+
+    def compute_qualities(self, node, gamma=10):
+        qg = self.g.copy()
+        # assign much higher cost to edges with no priority:
+        for belief in self.belief.values():
+
+            ps = max(v for v in belief.priorities.values() if v != np.inf)
+            for k, v in belief.priorities.items():
+                if v == np.inf:
+                    continue
+                qg.edges[k, belief.state]["weight"] *= (1 + (ps - v)/ps)**gamma
+        edges = qg.in_edges(node)
+        # compute qualities for each edge
+        qualities = [np.random.rand() for _ in edges]
+        #qualities = [self.compute_quality(qg, e[0], e[1]) for e in edges]
+
+        # now we get paths lengeths for qualities: however, we want to maximise quality
+        # and the shortest path is the best
+        # we want the following scale: max -> 0.1, inf -> 0, min -> 1
+        #if min(qualities) == np.inf:
+        #    qualities = [1.0 for _ in qualities]
+        #qualities = [0.001*np.random.rand() + 1 - q / max(qm for qm in qualities if qm != np.inf) for q in qualities]
+        bs = BeliefState(node, {e[0]: q for e, q in zip(edges, qualities)})
+        return bs
+
+    def compute_quality(self, graph:nx.DiGraph, node:int, neighbour:int)->float:
+        # now we compute the path with only one of those edges leading to the node present in the graph
+        # low random number, if edge in path
+        # high random number, if edge not in path
+        q = 0.001 * (np.random.rand() - 0.5)
+        if node == neighbour:
+            return q 
+        # if neighbour -> node is in the plan: add 1
+        for i, n in enumerate(self.plan):
+            if n == neighbour:
+                q += 0.1
+                if self.plan[i+1] == node:
+                    q += 1.0
+        # if node -> neighbour is in the plan: add -1
+        for i, n in enumerate(self.plan):
+            if n == node:
+                q += 0.1
+                if self.plan[i+1] == neighbour:
+                    q -= 1.0
+        return q
+        g = graph.copy()
+        for e in graph.in_edges(node):
+            if e[0] != neighbour:
+                g.remove_edge(*e)
+        # compute the path
+        try:
+            q = nx.shortest_path_length(g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
+            return q
+        except nx.NetworkXNoPath:
+            return np.inf
+        return None
+        
 
     def set_belief(self, node, belief):
         self.belief[node] = belief
@@ -1286,7 +1338,6 @@ class CCRv2(Planner):
                 for i, sg in enumerate(self.environment.get_state_goal_tuples())
                 ]
         
-        
     def make_cdm_decision(self):
         node = self.pick_cdm_node()
         decision = self.agents[0].get_cdm_opinion(node)
@@ -1299,10 +1350,11 @@ class CCRv2(Planner):
 
     def pick_cdm_node(self):
         # get random node for cdm
-        nodes = [a.get_cdm_node() for a in self.agents]
-        return np.random.choice([n for n in nodes if n is not None])
-    
-
+        nodes = set()
+        for a in self.agents:
+            nodes |= a.get_cdm_node()
+        assert len(nodes)
+        return np.random.choice(list(nodes))
     
     def planning_loop(self):
         changed = True
@@ -1311,13 +1363,14 @@ class CCRv2(Planner):
             self.update_all_paths()
             # make plans consistent
             changed = self.make_all_plans_consistent()
-            # make cdm decision
+            # make cdm decision, once all plans are consistent with the belief
             if not changed:
                 conflicts = [bool(len(a.get_conflicts())) for a in self.agents]
                 if not any(conflicts):
                     return
                 self.make_cdm_decision()
                 changed = True
+        raise nx.NetworkXNoPath()
 
     def update_all_paths(self):
         self.plans = {a.index: a.get_plan() for a in self.agents}
@@ -1339,9 +1392,7 @@ class CCRv2(Planner):
         :return: list of plans for all agents
         """
         self.planning_loop()
-
-
-
+        # post-process plans to right format:
         plans = [agent.get_plan() for agent in self.agents]
         plans = [p + [None] for p in plans]
         ret = zip_longest(*plans, fillvalue=None)
