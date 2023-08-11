@@ -180,8 +180,8 @@ class MapfInfoEnvironment(Environment):
 class RoadmapEnvironment(Environment):
     def __init__(self, 
                  map_path,
-                 start_positions:tuple[float],
-                 goal_positions:tuple[float], 
+                 start_positions:tuple[float]|None,
+                 goal_positions:tuple[float]|None, 
                  generator_points=None, 
                  wx:tuple[float,float]|None=None, 
                  wy:tuple[float,float]|None=None, 
@@ -209,10 +209,14 @@ class RoadmapEnvironment(Environment):
                                       working_area_y=wy,
                                       offset=offset,
                                       occupied_space=obstacles)
-        start_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in start_positions])
-        goal_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in goal_positions])
-        self._start_positions = start_positions
-        self._goal_positions = goal_positions
+        start_nodes = ()
+        goal_nodes = ()
+        if start_positions is not None:
+            start_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in start_positions])
+            self._start_positions = start_positions
+        if goal_positions is not None:
+            goal_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in goal_positions])
+            self._goal_positions = goal_positions
 
         self._obstacles = obstacles
         
