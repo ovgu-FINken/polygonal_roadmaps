@@ -1090,6 +1090,9 @@ class BeliefState:
     
     def __radd__(self, other):
         return self.__add__(other)
+    
+    def __str__(self):
+        return f"BeliefState(state={self.state}, priorities={self.priorities})"
 
 class CCRAgent:
     def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, sta_star_cache:SpaceTimeAStarCache):
@@ -1119,6 +1122,11 @@ class CCRAgent:
     def update_state(self, state):
         self.state = state
         self.cache.reset(state_only=True)
+        self.cost = np.inf
+        self.conflicts = frozenset()
+        self.constraints: set[NodeConstraint] = set()
+        self.consistent = False
+        self.compute_plan()
         
     def update_goal(self, goal):
         self.goal = goal
@@ -1191,8 +1199,12 @@ class CCRAgent:
             if ca.node not in self.belief:
                 continue
             # check who has priority:
-            own_prio = self.belief[ca.node].priorities[self.plan[ca.time - 1]]
-            other_prio = self.belief[ca.node].priorities[self.other_paths[ca.agent][ca.time - 1]]
+            if ca.time == 0:
+                continue
+            prior_node_self = self.plan[ca.time - 1]
+            prior_node_other = self.other_paths[ca.agent][ca.time - 1]
+            own_prio = self.belief[ca.node].priorities[prior_node_self]
+            other_prio = self.belief[ca.node].priorities[prior_node_other]
             if other_prio > own_prio:
                 k = self.planning_problem_parameters.k_robustness
                 t_min = max(1, ca.time - k)

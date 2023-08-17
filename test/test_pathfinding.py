@@ -276,6 +276,7 @@ class TestCCRv2(unittest.TestCase):
         
         bs_plus = bs3 + bs1
         self.assertDictEqual(bs_plus.priorities, bs1.priorities)
+        
          
 
 class TestCBS(unittest.TestCase):
