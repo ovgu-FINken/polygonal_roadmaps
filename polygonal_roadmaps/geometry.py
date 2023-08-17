@@ -9,6 +9,7 @@ from skimage import io, measure
 import yaml
 import os
 import networkx as nx
+from itertools import combinations
 
 
 @dataclass
@@ -387,3 +388,47 @@ def select_largest_poly(poly):
     if poly.geometryType() == 'MultiPolygon':
         return sorted(poly.geoms, key=lambda p: p.area, reverse=True)[0]
     return poly
+def is_visible(p1, p2, polygon):
+    """Check if two points are visible to each other within a polygon."""
+    line = LineString([p1, p2])
+    return polygon.contains(line) and line.length > 0 and not line.crosses(polygon)
+
+def construct_visibility_graph(polygon):
+    """Construct a visibility graph for a given polygon."""
+    G = nx.Graph()
+
+    points = [Point(coord) for coord in polygon.exterior.coords[:-1]]
+
+    for point in points:
+        G.add_node(point)
+
+    # Add the edges to the graph if two points are visible to each other
+    for p1, p2 in combinations(points, 2):
+        if is_visible(p1, p2, polygon):
+            G.add_edge(p1, p2, weight=p1.distance(p2))
+
+    return G
+
+def find_shortest_path(polygon,start,end):
+    """Find the shortest path inside a polygon from the center of the first node to the center of the last node."""
+    
+    # Ensure start and end points are within the polygon
+    if not (polygon.contains(Point(start)) and polygon.contains(Point(end))):
+        raise ValueError("Both start and end points must be inside the polygon.")
+
+    G = construct_visibility_graph(polygon)
+    G.add_node(Point(start))
+    G.add_node(Point(end))
+
+    # Connect the start and end points to all visible points in the graph
+    for node in G.nodes():
+        if is_visible(Point(start), node, polygon):
+            G.add_edge(Point(start), node, weight=Point(start).distance(node))
+        if is_visible(Point(end), node, polygon):
+            G.add_edge(Point(end), node, weight=Point(end).distance(node))
+    
+    path = nx.shortest_path(G, source=Point(start), target=Point(end), weight='weight')
+    
+    return path
+
+
