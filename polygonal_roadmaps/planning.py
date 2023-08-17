@@ -534,7 +534,7 @@ class CBS:
         self.iteration_counter = 0
         self.duplicate_cache = set()
         self.duplicate_counter = 0
-
+        
     def setup(self):
         self.best = None
         self.open = []
@@ -1118,6 +1118,16 @@ class CCRAgent:
         
     def update_state(self, state):
         self.state = state
+        self.cache.reset(state_only=True)
+        
+    def update_goal(self, goal):
+        self.goal = goal
+        self.cache.reset() 
+        self.cost = np.inf
+        self.conflicts = frozenset()
+        self.constraints: set[NodeConstraint] = set()
+        self.consistent = False
+        self.compute_plan()
 
     def get_plan(self) -> list[int]:
         if self.state is None:
@@ -1200,6 +1210,10 @@ class CCRAgent:
         return all(self.is_conflict_consistent(c) for c in conflicts)
     
     def compute_plan(self):
+        if self.state is None:
+            return
+        if self.goal is None:
+            return
         self.plan, self.cost = self.cache.get_path(self.state, self.goal, frozenset(self.constraints))
         
     def make_plan_consistent(self, recurse=True):
@@ -1210,6 +1224,10 @@ class CCRAgent:
 
         :param other_plans: list of plans of other agents
         """
+        if not self.plan:
+            self.compute_plan()
+        if not self.plan:
+            return False
         conflicts = self.get_conflicts()
         if not len(conflicts):
             return False

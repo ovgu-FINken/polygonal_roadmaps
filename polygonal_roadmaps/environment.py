@@ -245,4 +245,7 @@ class RoadmapEnvironment(Environment):
         if show:
             plt.show()
             plt.close()
+    
+    def find_nearest_node(self, pos):
+        return geometry.find_nearest_node(self.g, pos)
         
