@@ -1130,11 +1130,12 @@ class CCRAgent:
         
     def update_goal(self, goal):
         self.goal = goal
-        self.cache.reset() 
+        self.cache.reset()
         self.cost = np.inf
         self.conflicts = frozenset()
         self.constraints: set[NodeConstraint] = set()
         self.consistent = False
+        self.plan = []
         self.compute_plan()
 
     def get_plan(self) -> list[int]:
@@ -1203,6 +1204,13 @@ class CCRAgent:
                 continue
             prior_node_self = self.plan[ca.time - 1]
             prior_node_other = self.other_paths[ca.agent][ca.time - 1]
+            # todo FIX THIS:
+            # assert (prior_node_other, ca.node) in self.g.edges() or prior_node_other == ca.node, f"{prior_node_other}, {ca.node} share no edge in the graph -- conflict occures at t={ca.time}"
+            # assert (prior_node_self, ca.node) in self.g.edges() or prior_node_self == ca.node, f"{prior_node_self}, {ca.node} share no edge in the graph -- conflict occures at t={ca.time}"
+            if prior_node_other not in self.belief[ca.node].priorities:
+                continue
+            if prior_node_self not in self.belief[ca.node].priorities:
+                continue
             own_prio = self.belief[ca.node].priorities[prior_node_self]
             other_prio = self.belief[ca.node].priorities[prior_node_other]
             if other_prio > own_prio:
