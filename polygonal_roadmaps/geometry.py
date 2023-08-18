@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.spatial import Voronoi
 import shapely.geometry
-from shapely.geometry import Polygon, Point, MultiLineString, LineString
+from shapely import Polygon, Point, MultiLineString, LineString, simplify
 import shapely.ops
 from dataclasses import dataclass
 from skimage import io, measure
@@ -388,47 +388,78 @@ def select_largest_poly(poly):
     if poly.geometryType() == 'MultiPolygon':
         return sorted(poly.geoms, key=lambda p: p.area, reverse=True)[0]
     return poly
+
+
 def is_visible(p1, p2, polygon):
     """Check if two points are visible to each other within a polygon."""
     line = LineString([p1, p2])
-    return polygon.contains(line) and line.length > 0 and not line.crosses(polygon)
+    return line.within(polygon)
+
 
 def construct_visibility_graph(polygon):
     """Construct a visibility graph for a given polygon."""
     G = nx.Graph()
 
-    points = [Point(coord) for coord in polygon.exterior.coords[:-1]]
+    points = [Point(coord) for coord in polygon.exterior.coords]
+    
+    # Add the edges to the graph that connect the points in the polygon
+    for p1, p2 in zip(points[1:], points[:-1]):
+        G.add_edge(p1, p2, weight=p1.distance(p2))
 
-    for point in points:
-        G.add_node(point)
-
+    
     # Add the edges to the graph if two points are visible to each other
-    for p1, p2 in combinations(points, 2):
-        if is_visible(p1, p2, polygon):
-            G.add_edge(p1, p2, weight=p1.distance(p2))
-
+    points = points[:-1]
+    for i, p1 in enumerate(points):
+        # we do not need to check i+1, since we already checked it in the previous loop
+        for p2 in points[i + 2:]:
+            if is_visible(p1, p2, polygon):
+                G.add_edge(p1, p2, weight=p1.distance(p2))
     return G
 
-def find_shortest_path(polygon,start,end):
+
+def find_shortest_path(polygon,start,end, eps=0.01):
     """Find the shortest path inside a polygon from the center of the first node to the center of the last node."""
+
+    # Convert the start and end points to shapely Points
+    # If a pose is passed, ignore the orientation 
+    if not isinstance(start, Point):
+        start = Point(start[:2])
+    if not isinstance(end, Point):
+        end = Point(end[:2])
     
-    # Ensure start and end points are within the polygon
-    if not (polygon.contains(Point(start)) and polygon.contains(Point(end))):
-        raise ValueError("Both start and end points must be inside the polygon.")
+    polygon = simplify(polygon, tolerance=eps)
+
+    prefix = []
+    # if the start or goal points are not inside the polygon, we need to connect them to the polygon
+    if not polygon.contains(start):
+        # if it's close enough we can ignore that it's outside the polygon
+        if start.distance(polygon.exterior) > eps:
+            # find the closest point on the polygon to the start point
+            prefix = [start]
+        start = polygon.exterior.interpolate(polygon.exterior.project(start))
+    
+    postfix = []
+    if not polygon.contains(end):
+        if end.distance(polygon.exterior) > eps:
+            postfix = [end]
+        end = polygon.exterior.interpolate(polygon.exterior.project(end))
+
+    # check if start and goal are directly visible
+    if is_visible(start, end, polygon):
+        return prefix + [start, end] + postfix
 
     G = construct_visibility_graph(polygon)
-    G.add_node(Point(start))
-    G.add_node(Point(end))
 
     # Connect the start and end points to all visible points in the graph
+    G.add_nodes_from([start, end])
     for node in G.nodes():
-        if is_visible(Point(start), node, polygon):
-            G.add_edge(Point(start), node, weight=Point(start).distance(node))
-        if is_visible(Point(end), node, polygon):
-            G.add_edge(Point(end), node, weight=Point(end).distance(node))
+        if is_visible(start, node, polygon):
+            G.add_edge(start, node, weight=Point(start).distance(node))
+        if is_visible(end, node, polygon):
+            G.add_edge(end, node, weight=Point(end).distance(node))
     
     path = nx.shortest_path(G, source=Point(start), target=Point(end), weight='weight')
     
-    return path
+    return prefix + path + postfix
 
 
