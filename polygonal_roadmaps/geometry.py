@@ -2,7 +2,8 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.spatial import Voronoi
 import shapely.geometry
-from shapely import Polygon, Point, MultiLineString, LineString, simplify
+from shapely import Polygon, Point, MultiLineString, LineString, simplify 
+from shapely.ops import nearest_points
 import shapely.ops
 from dataclasses import dataclass
 from skimage import io, measure
@@ -427,38 +428,42 @@ def find_shortest_path(polygon,start,end, eps=0.01):
     if not isinstance(end, Point):
         end = Point(end[:2])
     
-    polygon = simplify(polygon, tolerance=eps)
+    simple_polygon = simplify(polygon, tolerance=eps)
 
     prefix = []
     # if the start or goal points are not inside the polygon, we need to connect them to the polygon
-    if not polygon.contains(start):
+    if not simple_polygon.contains(start):
         # if it's close enough we can ignore that it's outside the polygon
-        if start.distance(polygon.exterior) > eps:
+        if start.distance(simple_polygon.exterior) > eps:
             # find the closest point on the polygon to the start point
             prefix = [start]
-        start = polygon.exterior.interpolate(polygon.exterior.project(start))
-    
+        start = nearest_points(simple_polygon.buffer(-0.001), start)[0]
+
     postfix = []
-    if not polygon.contains(end):
-        if end.distance(polygon.exterior) > eps:
+    if not simple_polygon.contains(end):
+        if end.distance(simple_polygon.exterior) > eps:
             postfix = [end]
-        end = polygon.exterior.interpolate(polygon.exterior.project(end))
+        end = nearest_points(simple_polygon.buffer(-0.001), end)[0]
+    
 
     # check if start and goal are directly visible
-    if is_visible(start, end, polygon):
+    if is_visible(start, end, simple_polygon):
         return prefix + [start, end] + postfix
 
-    G = construct_visibility_graph(polygon)
+    G = construct_visibility_graph(simple_polygon)
 
     # Connect the start and end points to all visible points in the graph
     G.add_nodes_from([start, end])
     for node in G.nodes():
-        if is_visible(start, node, polygon):
-            G.add_edge(start, node, weight=Point(start).distance(node))
-        if is_visible(end, node, polygon):
-            G.add_edge(end, node, weight=Point(end).distance(node))
+        if is_visible(start, node, simple_polygon):
+            G.add_edge(start, node, weight=start.distance(node))
+        if is_visible(end, node, simple_polygon):
+            G.add_edge(end, node, weight=end.distance(node))
     
-    path = nx.shortest_path(G, source=Point(start), target=Point(end), weight='weight')
+    assert start in G.nodes()
+    assert end in G.nodes()
+    assert nx.number_connected_components(G) == 1
+    path = nx.shortest_path(G, source=start, target=end, weight='weight')
     
     return prefix + path + postfix
 
