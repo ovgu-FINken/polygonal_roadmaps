@@ -21,8 +21,8 @@ class TestGraphCreation(unittest.TestCase):
         self.assertEqual(info['resolution'], 0.05)
         self.assertTrue(len(map))
         free, obstacles = geometry.read_obstacles(self.map_path)
-        self.assertEqual(obstacles.geometryType(), 'MultiPolygon')
-        self.assertEqual(free.geometryType(), 'MultiPolygon')
+        self.assertEqual(obstacles.geom_type, 'MultiPolygon')
+        self.assertEqual(free.geom_type, 'MultiPolygon')
         self.assertFalse(free.buffer(-0.1).intersects(obstacles))
 
         _, obstacles = geometry.read_obstacles(self.map_path)
@@ -75,7 +75,7 @@ class TestPathPolygon(unittest.TestCase):
         path = [26, 25, 27, 29, 32, 63]
         poly = geometry.poly_from_path(self.graph, path, eps=0.05)
         self.assertTrue(poly.is_valid)
-        self.assertEqual(poly.geometryType(), "Polygon")
+        self.assertEqual(poly.geom_type, "Polygon")
 
     def testComputeStraightPath(self):
         start = self.graph.nodes[26]['geometry'].center

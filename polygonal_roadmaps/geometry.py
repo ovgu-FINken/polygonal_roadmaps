@@ -87,7 +87,7 @@ def add_edges_to_graph(nodes, offset):
 
                 bp = n1.outer.union(n2.outer).buffer(-offset).difference(n1.inner).difference(n2.inner)
                 if bp.is_valid:
-                    if bp.geometryType() == 'MultiPolygon':
+                    if bp.geom_type == 'MultiPolygon':
                         x = None
                         for p in bp.geoms:
                             if p.touches(n1.inner) and p.touches(n2.inner):
@@ -319,18 +319,18 @@ def compute_straight_path(poly, start, goal, eps=None):
         line = shapely.ops.snap(line, poly, 0.01)
     assert(line.intersects(poly))
     inner_line = poly.intersection(line)
-    if inner_line.geometryType() == 'LineString':
+    if inner_line.geom_type == 'LineString':
         inner_line = MultiLineString([inner_line])
-    elif inner_line.geometryType() == 'Point':
+    elif inner_line.geom_type == 'Point':
         inner_line = MultiLineString([])
-    elif inner_line.geometryType() == 'MultiLineString':
+    elif inner_line.geom_type == 'MultiLineString':
         pass
     else:
         # print(inner_line.wkt)
         pass
-    result = [i for i in inner_line.geoms if i.geometryType() == 'LineString']
+    result = [i for i in inner_line.geoms if i.geom_type == 'LineString']
     outer_line = line - poly
-    if outer_line.geometryType() == 'LineString':
+    if outer_line.geom_type == 'LineString':
         if outer_line.is_empty:
             outer_line = MultiLineString([])
         else:
@@ -339,11 +339,11 @@ def compute_straight_path(poly, start, goal, eps=None):
         i0 = poly.exterior.project(Point(ls.coords[0]))
         i1 = poly.exterior.project(Point(ls.coords[-1]))
         outer_segment = shapely.ops.substring(poly.exterior, i0, i1)
-        if outer_segment.geometryType() == 'LineString':
+        if outer_segment.geom_type == 'LineString':
             outer_segment = MultiLineString([outer_segment])
-        elif outer_segment.geometryType() == 'Point':
+        elif outer_segment.geom_type == 'Point':
             continue
-        result += [i for i in outer_segment.geoms if i.geometryType() == 'LineString']
+        result += [i for i in outer_segment.geoms if i.geom_type == 'LineString']
 
     try:
         line = shapely.ops.linemerge(MultiLineString(result))
@@ -385,7 +385,7 @@ def compute_straight_path(poly, start, goal, eps=None):
 
 
 def select_largest_poly(poly):
-    if poly.geometryType() == 'MultiPolygon':
+    if poly.geom_type == 'MultiPolygon':
         return sorted(poly.geoms, key=lambda p: p.area, reverse=True)[0]
     return poly
 
