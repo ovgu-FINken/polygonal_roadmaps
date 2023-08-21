@@ -8,7 +8,7 @@ import os
 import numpy as np
 
 
-from polygonal_roadmaps import planning
+from polygonal_roadmaps import planning, cli
 from polygonal_roadmaps.environment import PlanningProblemParameters, gen_example_graph, GraphEnvironment
 
 
@@ -126,6 +126,7 @@ class TestPrioritizedSearch(unittest.TestCase):
 class TestCCRv2(unittest.TestCase):
     def setUp(self):
         self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'))
+        self.env2 = cli.env_generator('DrivingSwarm;icra2021_map.yaml;icra2021.yml', n_agents= 3)[0]
 
     def testNoConflict(self):
         planner = planning.CCRv2(self.env)
@@ -143,6 +144,12 @@ class TestCCRv2(unittest.TestCase):
         self.assertEqual(len(planner.agents[0].get_conflicts()), 0)
         self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
         self.assertNotEqual(plan, reference)
+        
+        planner = planning.CCRv2(self.env2)
+        plan = planner.create_plan()
+        self.assertTrue(planner.agents[0].is_consistent())
+        self.assertTrue(planner.agents[1].is_consistent())
+        self.assertTrue(planner.agents[2].is_consistent())
         
     def testAgentInit(self):
         self.env.state = ('a', 'e')

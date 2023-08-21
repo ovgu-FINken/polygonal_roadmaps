@@ -1194,17 +1194,23 @@ class CCRAgent:
 
     def get_resolving_constraints(self, conflict) -> frozenset:
         """Check if a conflict is consistent with the agents belief and return the first violated constraint"""
+        returnset = set()
         for ca in conflict.conflicting_agents:
             if ca.agent == self.index:
                 continue
             if ca.node not in self.belief:
                 continue
             # check who has priority:
-            if ca.time == 0:
+            if ca.time < 1:
+                continue
+            if ca.time - 1 not in self.plan:
+                continue
+            if ca.time - 1 not in self.other_paths[ca.agent]:
                 continue
             prior_node_self = self.plan[ca.time - 1]
             prior_node_other = self.other_paths[ca.agent][ca.time - 1]
-            # todo FIX THIS:
+            
+            # FIXME!:
             # assert (prior_node_other, ca.node) in self.g.edges() or prior_node_other == ca.node, f"{prior_node_other}, {ca.node} share no edge in the graph -- conflict occures at t={ca.time}"
             # assert (prior_node_self, ca.node) in self.g.edges() or prior_node_self == ca.node, f"{prior_node_self}, {ca.node} share no edge in the graph -- conflict occures at t={ca.time}"
             if prior_node_other not in self.belief[ca.node].priorities:
@@ -1217,8 +1223,8 @@ class CCRAgent:
                 k = self.planning_problem_parameters.k_robustness
                 t_min = max(1, ca.time - k)
                 t_max = min(ca.time + k + 1, len(self.plan))
-                return frozenset( NodeConstraint(agent=self.index, time=t, node=ca.node) for t in range(t_min, t_max) )
-        return frozenset()
+                returnset |= { NodeConstraint(agent=self.index, time=t, node=ca.node) for t in range(t_min, t_max) }
+        return frozenset(returnset)
     
     def is_conflict_consistent(self, conflict):
         return not len(self.get_resolving_constraints(conflict))

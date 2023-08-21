@@ -418,8 +418,9 @@ def construct_visibility_graph(polygon):
     return G
 
 
-def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True):
+def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True, simplify_path=True):
     """Find the shortest path inside a polygon from the center of the first node to the center of the last node."""
+    assert polygon.geom_type == 'Polygon', f'Expected a Polygon, got {polygon.geom_type}'
 
     # Convert the start and end points to shapely Points
     # If a pose is passed, ignore the orientation 
@@ -428,7 +429,11 @@ def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True):
     if not isinstance(end, Point):
         end = Point(end[:2])
     
-    simple_polygon = simplify(polygon, tolerance=eps)
+    simple_polygon = polygon
+    if simplify_path:
+        simple_polygon = simplify(polygon, tolerance=eps)
+        if simple_polygon.geom_type == 'MultiPolygon':
+            simple_polygon = polygon
 
     prefix = []
     # if the start or goal points are not inside the polygon, we need to connect them to the polygon
