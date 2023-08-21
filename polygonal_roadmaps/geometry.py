@@ -152,7 +152,7 @@ def read_map(info_file):
 
 def poly_from_path(g, path, eps=0.05):
     poly = [g.nodes()[p]['geometry'].inner.buffer(eps) for p in path]
-    poly += [g.edges()[n1, n2]['geometry'].borderPoly.buffer(eps) for n1, n2 in zip(path[:-1], path[1:])]
+    poly += [g.edges()[n1, n2]['geometry'].borderPoly.buffer(eps) for n1, n2 in zip(path[:-1], path[1:]) if (n1, n2) in g.edges()]
     poly = shapely.ops.unary_union(poly).buffer(-eps).simplify(eps)
     return select_largest_poly(poly)
 
