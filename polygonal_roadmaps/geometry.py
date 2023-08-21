@@ -418,7 +418,7 @@ def construct_visibility_graph(polygon):
     return G
 
 
-def find_shortest_path(polygon,start,end, eps=0.01):
+def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True):
     """Find the shortest path inside a polygon from the center of the first node to the center of the last node."""
 
     # Convert the start and end points to shapely Points
@@ -441,7 +441,7 @@ def find_shortest_path(polygon,start,end, eps=0.01):
 
     postfix = []
     if not simple_polygon.contains(end):
-        if end.distance(simple_polygon.exterior) > eps:
+        if end.distance(simple_polygon.exterior) > eps and goal_outside_feasible:
             postfix = [end]
         end = nearest_points(simple_polygon.buffer(-0.001), end)[0]
     
