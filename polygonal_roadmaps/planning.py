@@ -1093,10 +1093,14 @@ class BeliefState:
     
     def __str__(self):
         return f"BeliefState(state={self.state}, priorities={self.priorities})"
+    
+    def __repr__(self):
+        return self.__str__()
 
 class CCRAgent:
     def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, sta_star_cache:SpaceTimeAStarCache):
-        self.g = graph
+        self.g = graph.copy()
+        self.belief_graph = graph.copy()
         self.state = state
         self.goal = goal
         self.planning_problem_parameters = planning_problem_parameters
@@ -1203,9 +1207,11 @@ class CCRAgent:
             # check who has priority:
             if ca.time < 1:
                 continue
-            if ca.time - 1 not in self.plan:
+            if len(self.other_paths[ca.agent]) < ca.time - 1:
+                logging.warn(f"in get_resolving_contraints for {self.index}: agent {ca.agent} has no plan at time {ca.time - 1}")
                 continue
-            if ca.time - 1 not in self.other_paths[ca.agent]:
+            if len(self.plan) < ca.time - 1:
+                logging.warn(f"agent {self.index} has no plan at time {ca.time - 1}")
                 continue
             prior_node_self = self.plan[ca.time - 1]
             prior_node_other = self.other_paths[ca.agent][ca.time - 1]
@@ -1214,8 +1220,10 @@ class CCRAgent:
             # assert (prior_node_other, ca.node) in self.g.edges() or prior_node_other == ca.node, f"{prior_node_other}, {ca.node} share no edge in the graph -- conflict occures at t={ca.time}"
             # assert (prior_node_self, ca.node) in self.g.edges() or prior_node_self == ca.node, f"{prior_node_self}, {ca.node} share no edge in the graph -- conflict occures at t={ca.time}"
             if prior_node_other not in self.belief[ca.node].priorities:
+                logging.warn(f"{prior_node_other} not in belief of {ca.node} for agent {ca.agent}")
                 continue
             if prior_node_self not in self.belief[ca.node].priorities:
+                logging.warn(f"{prior_node_self} not in belief of {ca.node} for agent {self.index}")
                 continue
             own_prio = self.belief[ca.node].priorities[prior_node_self]
             other_prio = self.belief[ca.node].priorities[prior_node_other]
@@ -1311,8 +1319,8 @@ class CCRAgent:
                 qg.edges[k, belief.state]["weight"] *= (1 + (ps - v)/ps)**gamma
         edges = qg.in_edges(node)
         # compute qualities for each edge
-        qualities = [np.random.rand() for _ in edges]
-        #qualities = [self.compute_quality(qg, e[0], e[1]) for e in edges]
+        #qualities = [np.random.rand() for _ in edges]
+        qualities = [self.compute_quality(e[0], e[1]) for e in edges]
 
         # now we get paths lengeths for qualities: however, we want to maximise quality
         # and the shortest path is the best
@@ -1323,7 +1331,7 @@ class CCRAgent:
         bs = BeliefState(node, {e[0]: q for e, q in zip(edges, qualities)})
         return bs
 
-    def compute_quality(self, graph:nx.DiGraph, node:int, neighbour:int)->float:
+    def compute_quality(self, node:int, neighbour:int)->float:
         # now we compute the path with only one of those edges leading to the node present in the graph
         # low random number, if edge in path
         # high random number, if edge not in path
@@ -1331,33 +1339,46 @@ class CCRAgent:
         if node == neighbour:
             return q 
         # if neighbour -> node is in the plan: add 1
-        for i, n in enumerate(self.plan):
+        for i, n in enumerate(self.plan[:-1]):
             if n == neighbour:
                 q += 0.1
                 if self.plan[i+1] == node:
                     q += 1.0
         # if node -> neighbour is in the plan: add -1
-        for i, n in enumerate(self.plan):
+        for i, n in enumerate(self.plan[:-1]):
             if n == node:
                 q += 0.1
                 if self.plan[i+1] == neighbour:
                     q -= 1.0
         return q
-        g = graph.copy()
-        for e in graph.in_edges(node):
-            if e[0] != neighbour:
-                g.remove_edge(*e)
+    
+    def compute_quality_2(self, node:int, neighbour:int)->float:
+        q0 = 10e10
+        try:
+            q0 = nx.shortest_path_length(self.belief_graph, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
+        except nx.NetworkXNoPath:
+            return 0.0
+        
+        g = self.belief_graph.copy()
+        # remove all edges going to the node, except the one we want to compute the quality for
+        rme = list(g.in_edges(node))
+        g.remove_edges_from(rme)
+        g.add_edge(neighbour, node, weight=0.1)
         # compute the path
         try:
             q = nx.shortest_path_length(g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
-            return q
+            return q - q0
         except nx.NetworkXNoPath:
-            return np.inf
-        return None
+            return 10e10
+        return 0.0
         
 
     def set_belief(self, node, belief):
         self.belief[node] = belief
+        rme = list(self.belief_graph.in_edges(node))
+        self.belief_graph.remove_edges_from(rme)
+        bel_sorted = sorted(belief.priorities.items(), key=lambda x: x[1])
+        self.belief_graph.add_edge(bel_sorted[1], node, weight=0.1)
 
 
 class CCRv2(Planner):
