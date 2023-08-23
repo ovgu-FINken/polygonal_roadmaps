@@ -184,7 +184,7 @@ def spatial_path_and_cost(G, source, target, weight):
     spatial_path = nx.shortest_path(G, source, target, weight)
     return spatial_path, sum_of_cost([spatial_path], G, weight)
 
-def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, wait_action_cost=.00001, belief=None, predecessors=None) -> tuple[list, float]:
+def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, wait_action_cost=.00001, belief=None, predecessors=None, node_contraints=None) -> tuple[list, float]:
     if not len(predecessors):
         return spatial_path_and_cost(G, source=source, target=target, weight="weight")
     if not len(belief):
@@ -229,8 +229,17 @@ def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, 
         for neighbour, w in neighbours:
             # check if we are allowed
             # if not -- contiue this edge will not be used
+            # k = 0 conflict:
+            if (neighbour, t) in node_contraints:
+                continue
             if (neighbour, t) in predecessors and neighbour in belief:
                 if priority(predecessors[neighbour, t], neighbour) >= priority(node, neighbour):
+                        continue
+            if (neighbour, t-1) in predecessors and neighbour in belief:
+                if priority(predecessors[neighbour, t-1], neighbour) >= priority(node, neighbour):
+                        continue
+            if (neighbour, t+1) in predecessors and neighbour in belief:
+                if priority(predecessors[neighbour, t+1], neighbour) >= priority(node, neighbour):
                         continue
             
             ncost = dist + weight_fn(node, neighbour, w)
@@ -483,10 +492,10 @@ def compute_normalized_weight(g, weight):
         # add a weight attribute, which normalizes the distance between nodes by the maximum distane
         # the maximum distance will get a weight of 1, waiting action will also get the weight of 1+eps
         for n1, n2 in g.edges():
-            g.edges()[n1, n2]["weight"] = g.edges()[n1, n2][weight] / max_dist
+            g.edges()[n1, n2]["weight"] = g.edges()[n1, n2][weight] / max_dist + np.random.rand() * 1e-6
     else:
         for n1, n2 in g.edges():
-            g.edges()[n1, n2]['weight'] = 1.0001
+            g.edges()[n1, n2]['weight'] = 1.0001 + np.random.rand() * 1e-6
 
 
 class SpaceTimeAStarCache:
@@ -1191,15 +1200,22 @@ class CCRAgent:
         self.compute_plan()
         
     def update_other_paths(self, other_paths):
-        other_paths = self.other_paths
-        self.plans_changed = True
-        self._update_other_paths(other_paths)
-        self.get_conflicts()
-        return other_paths == self.other_paths
+        ret = self._update_other_paths(other_paths)
+        if ret:
+            self.get_conflicts()
+        self.plans_changed |= ret
+        return ret
 
     def _update_other_paths(self, other_paths):
+        # remove own path
         op = {k: v for k, v in other_paths.items() if k != self.index}
-        self.other_paths |= op
+        
+        op = self.other_paths | op
+
+        if op == self.other_paths:
+            return False
+        self.other_paths = op
+        return True
         
     def update_state(self, state):
         if state == self.state:
@@ -1227,7 +1243,9 @@ class CCRAgent:
                     if pred[node, i+1] > self.belief[node].priorities[path[i]]:
                         continue
                 pred[node, i+1] = path[i]
-        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred)
+        # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
+        nc = set( (p[0], 1) for p in self.other_paths.values())
+        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc)
 
 
     def get_plan(self) -> list[int]:
@@ -1279,6 +1297,7 @@ class CCRAgent:
         """
         plan = self.plan
         self.compute_plan()
+        self.get_conflicts()
         return plan != self.plan
 
     def get_cdm_node(self) -> set[Any]:
@@ -1288,8 +1307,6 @@ class CCRAgent:
         nodes = set()
         for c in self.get_conflicts():
             for ca in c.conflicting_agents:
-                if ca.agent != self.index:
-                    continue
                 if ca.node in self.belief:
                     continue
                 nodes.add(ca.node)
@@ -1319,7 +1336,7 @@ class CCRAgent:
         for e in rme:
             g.edges[e]['weight'] = 10e10
         
-        qualities = [self.compute_quality_2(g, e[0], e[1]) for e in rme]
+        qualities = [self.compute_quality(g, e[0], e[1]) for e in rme]
 
         # now we get paths lengeths for qualities: however, we want to maximise quality
         # and the shortest path is the best
@@ -1330,7 +1347,7 @@ class CCRAgent:
         bs = BeliefState(node, {e[0]: q for e, q in zip(rme, qualities)})
         return bs
 
-    def compute_quality(self, node:int, neighbour:int)->float:
+    def compute_quality(self, _, node:int, neighbour:int)->float:
         # now we compute the path with only one of those edges leading to the node present in the graph
         # low random number, if edge in path
         # high random number, if edge not in path
@@ -1355,7 +1372,7 @@ class CCRAgent:
         q0 = 10e10
         try:
             q0 = nx.astar_path_length(self.g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
-        except nx.NetworkXNoPath:
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
             return 1e-10
         
         g.edges[neighbour, node]["weight"] = self.g.edges[neighbour, node]["weight"]
@@ -1364,7 +1381,7 @@ class CCRAgent:
             q = nx.astar_path_length(g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
             g.edges[neighbour, node]["weight"] = 10e10
             return q - q0
-        except nx.NetworkXNoPath:
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
             g.edges[neighbour, node]["weight"] = 10e10
             return 10e10
         return 0.0
@@ -1404,7 +1421,6 @@ class CCRv2(Planner):
         decision = self.agents[0].get_cdm_opinion(node)
         for a in self.agents[1:]:
             decision += a.get_cdm_opinion(node)
-        decision = decision * (1.0 / len(self.agents))
         for a in self.agents:
             a.set_belief(node, decision)
         return True
