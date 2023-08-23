@@ -185,6 +185,20 @@ class TestCCRv2(unittest.TestCase):
         # plans get overwritten when updated
         planner.agents[0].udate_other_paths({1: list('abcde')})
         self.assertEqual(planner.agents[0].other_paths, {1: list('abcde')})
+        
+    def testUpdateState(self):
+        planner = planning.CCRv2(self.env)
+        # check the assumption of the test
+        # path agent 0: 'abcde'
+        self.assertEqual(planner.agents[0].state, 'b')
+        planner.agents[0].compute_plan()
+        self.assertListEqual(planner.agents[0].plan, list('bcde'))
+
+        # change the state to b
+        planner.agents[0].update_state('a')
+        self.assertEqual(planner.agents[0].state, 'a')
+        self.assertListEqual(planner.agents[0].plan, list('abcde'))
+        
 
     def testCDMUpdate(self):
         self.env.state = ('a', 'e')

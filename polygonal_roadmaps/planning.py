@@ -1264,11 +1264,11 @@ class CCRAgent:
     def compute_plan(self):
         if not self.replan_needed():
             return
+        self.plan, self.cost = self.get_path(self.state, self.goal)
         self.belief_changed = False
         self.state_changed = False
         self.goal_changed = False
         self.plans_changed = False
-        self.plan, self.cost = self.get_path(self.state, self.goal)
         
     def make_plan_consistent(self):
         """Update the plan of an agent
