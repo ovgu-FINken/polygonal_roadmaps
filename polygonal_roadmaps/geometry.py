@@ -450,7 +450,9 @@ def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True, 
     if not simple_polygon.contains(end):
         if end.distance(simple_polygon.exterior) > eps and goal_outside_feasible:
             postfix = [end]
-        end = nearest_points(simple_polygon.buffer(-0.001), end)[0]
+        buff = simple_polygon.buffer(-0.001)
+        if not buff.is_empty:
+            end = nearest_points(buff, end)[0]
     
 
     # check if start and goal are directly visible
