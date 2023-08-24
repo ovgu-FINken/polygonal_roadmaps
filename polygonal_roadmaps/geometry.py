@@ -442,17 +442,13 @@ def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True, 
         if start.distance(simple_polygon.exterior) > eps:
             # find the closest point on the polygon to the start point
             prefix = [start]
-        buff = simple_polygon.buffer(-0.001)
-        if not buff.is_empty:
-            start = nearest_points(buff, start)[0]
+        start = nearest_points(simple_polygon, start)[0]
 
     postfix = []
     if not simple_polygon.contains(end):
         if end.distance(simple_polygon.exterior) > eps and goal_outside_feasible:
             postfix = [end]
-        buff = simple_polygon.buffer(-0.001)
-        if not buff.is_empty:
-            end = nearest_points(buff, end)[0]
+        end = nearest_points(simple_polygon, end)[0]
     
 
     # check if start and goal are directly visible
@@ -464,9 +460,9 @@ def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True, 
     # Connect the start and end points to all visible points in the graph
     G.add_nodes_from([start, end])
     for node in G.nodes():
-        if is_visible(start, node, simple_polygon):
+        if is_visible(start, node, simple_polygon.buffer(0.001)):
             G.add_edge(start, node, weight=start.distance(node))
-        if is_visible(end, node, simple_polygon):
+        if is_visible(end, node, simple_polygon.buffer(0.001)):
             G.add_edge(end, node, weight=end.distance(node))
     
     assert start in G.nodes()
