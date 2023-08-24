@@ -442,7 +442,9 @@ def find_shortest_path(polygon,start,end, eps=0.01, goal_outside_feasible=True, 
         if start.distance(simple_polygon.exterior) > eps:
             # find the closest point on the polygon to the start point
             prefix = [start]
-        start = nearest_points(simple_polygon.buffer(-0.001), start)[0]
+        buff = simple_polygon.buffer(-0.001)
+        if not buff.is_empty:
+            start = nearest_points(buff, start)[0]
 
     postfix = []
     if not simple_polygon.contains(end):

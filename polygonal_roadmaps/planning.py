@@ -184,7 +184,8 @@ def spatial_path_and_cost(G, source, target, weight):
     spatial_path = nx.shortest_path(G, source, target, weight)
     return spatial_path, sum_of_cost([spatial_path], G, weight)
 
-def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, wait_action_cost=.00001, belief=None, predecessors=None, node_contraints=None) -> tuple[list, float]:
+def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, wait_action_cost=.00001, belief=None, predecessors=None, node_contraints=None, preferred_nodes=None, inertia=0.2) -> tuple[list, float]:
+                                       
     if not len(predecessors):
         return spatial_path_and_cost(G, source=source, target=target, weight="weight")
     if not len(belief):
@@ -193,6 +194,8 @@ def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, 
         return nx.shortest_path_length(G, source=u, target=target, weight="weight")
     if spacetime_heuristic is None:
         spacetime_heuristic = true_cost_heuristic
+    if preferred_nodes is None:
+        preferred_nodes = {}
 
     def priority(n1, n2):
         # check the priority of edge n1 -> n2
@@ -230,6 +233,7 @@ def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, 
             # check if we are allowed
             # if not -- contiue this edge will not be used
             # k = 0 conflict:
+                
             if (neighbour, t) in node_contraints:
                 continue
             if (neighbour, t) in predecessors and neighbour in belief:
@@ -243,8 +247,12 @@ def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, 
                         continue
             
             ncost = dist + weight_fn(node, neighbour, w)
-            # TODO: Wait action cost is omitted here
-            # ncost += wait_action_cost if ...
+            if neighbour in preferred_nodes:
+                ncost -= inertia
+            if neighbour == node:
+                # add the wait action cost, waiting later is a tiny bit better
+                ncost += wait_action_cost + 1 / t * 10e-6
+
             t_neighbour = f'n{neighbour}t{t}'
             if t_neighbour in enqueued:
                 qcost, h = enqueued[t_neighbour]
@@ -1233,6 +1241,7 @@ class CCRAgent:
 
     def get_path(self, source, goal):
         pred = {}
+        preferred_nodes = set(self.plan)
         for path in self.other_paths.values():
             for i, node in enumerate(path[1:]):
                 # we need to check, that there is no other edge with more priority used for this node
@@ -1245,7 +1254,7 @@ class CCRAgent:
                 pred[node, i+1] = path[i]
         # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
         nc = set( (p[0], 1) for p in self.other_paths.values())
-        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc)
+        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=0.2)
 
 
     def get_plan(self) -> list[int]:
