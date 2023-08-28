@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.spatial import Voronoi
 import shapely.geometry
-from shapely import Polygon, Point, MultiLineString, LineString, simplify 
+from shapely import Polygon, Point, MultiLineString, LineString, simplify, union
 from shapely.ops import nearest_points
 import shapely.ops
 from dataclasses import dataclass
@@ -11,6 +11,7 @@ import yaml
 import os
 import networkx as nx
 from itertools import combinations
+import logging
 
 
 @dataclass
@@ -156,8 +157,17 @@ def poly_from_path(g, path, eps=0.05, previous_node=None):
         poly.append(g.edges()[previous_node, path[0]]['geometry'].borderPoly.buffer(eps))
     poly += [g.nodes()[p]['geometry'].inner.buffer(eps) for p in path]
     poly += [g.edges()[n1, n2]['geometry'].borderPoly.buffer(eps) for n1, n2 in zip(path[:-1], path[1:]) if (n1, n2) in g.edges()]
-    poly = shapely.ops.unary_union(poly).buffer(-eps).simplify(eps)
-    return select_largest_poly(poly)
+    uni = shapely.ops.unary_union(poly).buffer(-eps).simplify(eps)
+    if uni.is_empty:
+        uni = shapely.ops.unary_union(poly)
+    if uni.is_empty:
+        logging.warn("poly is empty")
+        logging.warn(poly)
+        logging.warn(uni)
+        logging.warn(shapely.ops.unary_union(poly).is_empty)
+        logging.warn(shapely.ops.unary_union(poly).buffer(-eps).is_empty)
+
+    return uni # select_largest_poly(poly)
 
 
 def path_from_positions(g, start, goal):
