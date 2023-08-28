@@ -1406,6 +1406,8 @@ class CCRAgent:
         self.belief_graph.edges[bel_sorted[1][0], node]["weight"] = self.g.edges[bel_sorted[1][0], node]["weight"]
         
     def delete_belief(self, node):
+        if node not in self.belief:
+            return
         self.belief_changed = True
         del self.belief[node]
         # restore edges in belief graph
