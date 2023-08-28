@@ -1404,6 +1404,14 @@ class CCRAgent:
             self.belief_graph.edges[e[0], e[1]]["weight"] = 10e10
         bel_sorted = sorted(belief.priorities.items(), key=lambda x: x[1])
         self.belief_graph.edges[bel_sorted[1][0], node]["weight"] = self.g.edges[bel_sorted[1][0], node]["weight"]
+        
+    def delete_belief(self, node):
+        self.belief_changed = True
+        del self.belief[node]
+        # restore edges in belief graph
+        rme = list(self.belief_graph.in_edges(node))
+        for e in rme:
+            self.belief_graph.edges[e[0], e[1]]["weight"] = self.g.edges[e[0], e[1]]["weight"]
 
 
 class CCRv2(Planner):
