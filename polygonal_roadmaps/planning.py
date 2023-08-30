@@ -1244,7 +1244,7 @@ class CCRAgent:
         preferred_nodes = set(self.plan)
         for path in self.other_paths.values():
             for i, node in enumerate(path[1:]):
-                if i > self.environment.planning_problem_parameters.conflict_horizon:
+                if i > self.planning_problem_parameters.conflict_horizon:
                     continue
                 # we need to check, that there is no other edge with more priority used for this node
                 if (node, i+1) in pred:
