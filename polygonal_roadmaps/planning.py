@@ -222,46 +222,46 @@ def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, 
         explored[curnode] = parent
         
         # expand neighbours and add edges
-        t = nodes[curnode]['t'] + 1
-        if t > limit:
+        next_t = nodes[curnode]['t'] + 1
+        if next_t > limit:
             continue
         node = nodes[curnode]['n']
 
-        neighbours = G[node].items()
+        next_nodes = G[node].items()
 
-        for neighbour, w in neighbours:
+        for next_node, w in next_nodes:
             # check if we are allowed
             # if not -- contiue this edge will not be used
             # k = 0 conflict:
                 
-            if (neighbour, t) in node_contraints:
+            if (next_node, next_t) in node_contraints:
                 continue
-            if (neighbour, t) in predecessors and neighbour in belief:
-                if priority(predecessors[neighbour, t], neighbour) >= priority(node, neighbour):
+            if (next_node, next_t) in predecessors and next_node in belief:
+                if priority(predecessors[next_node, next_t], next_node) >= priority(node, next_node):
                         continue
-            if (neighbour, t-1) in predecessors and neighbour in belief:
-                if priority(predecessors[neighbour, t-1], neighbour) >= priority(node, neighbour):
+            if (next_node, next_t-1) in predecessors and next_node in belief:
+                if priority(predecessors[next_node, next_t-1], next_node) >= priority(node, next_node):
                         continue
-            if (neighbour, t+1) in predecessors and neighbour in belief:
-                if priority(predecessors[neighbour, t+1], neighbour) >= priority(node, neighbour):
+            if (next_node, next_t+1) in predecessors and next_node in belief:
+                if priority(predecessors[next_node, next_t+1], next_node) >= priority(node, next_node):
                         continue
             
-            ncost = dist + weight_fn(node, neighbour, w)
-            if neighbour in preferred_nodes:
+            ncost = dist + weight_fn(node, next_node, w)
+            if next_node in preferred_nodes:
                 ncost -= inertia
-            if neighbour == node:
+            if next_node == node:
                 # add the wait action cost, waiting later is a tiny bit better
-                ncost += wait_action_cost + 1 / t * 10e-6
+                ncost += wait_action_cost + 1 / next_t * 1e-4
 
-            t_neighbour = f'n{neighbour}t{t}'
+            t_neighbour = f'n{next_node}t{next_t}'
             if t_neighbour in enqueued:
                 qcost, h = enqueued[t_neighbour]
                 if qcost < ncost:
                     # the path in the queue is better
                     continue
             else:
-                h = spacetime_heuristic(neighbour)
-            nodes[t_neighbour] = {'n': neighbour, 't': t}
+                h = spacetime_heuristic(next_node)
+            nodes[t_neighbour] = {'n': next_node, 't': next_t}
             enqueued[t_neighbour] = ncost, h
             heappush(queue, (ncost + h, next(c), t_neighbour, ncost, curnode))
     raise nx.NetworkXNoPath(f"Node {target} not reachable from {source}")
@@ -1309,14 +1309,14 @@ class CCRAgent:
         self.get_conflicts()
         return plan != self.plan
 
-    def get_cdm_node(self) -> set[Any]:
+    def get_cdm_node(self, re_decide_belief=False) -> set[Any]:
         if not len(self.get_conflicts()):
             return set()
         # just return the nodes with a conflict
         nodes = set()
         for c in self.get_conflicts():
             for ca in c.conflicting_agents:
-                if ca.node in self.belief:
+                if ca.node in self.belief and not re_decide_belief:
                     continue
                 nodes.add(ca.node)
         # randomly pick one of the nodes
