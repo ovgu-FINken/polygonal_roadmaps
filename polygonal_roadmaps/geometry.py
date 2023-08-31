@@ -415,8 +415,10 @@ def construct_visibility_graph(polygon):
     G = nx.Graph()
 
     points = [Point(coord) for coord in polygon.exterior.coords]
+    pcheck = polygon.buffer(0.01)
     
     # Add the edges to the graph that connect the points in the polygon
+    G.add_edge(points[0], points[-1], weight=points[0].distance(points[-1]))
     for p1, p2 in zip(points[1:], points[:-1]):
         G.add_edge(p1, p2, weight=p1.distance(p2))
 
@@ -426,7 +428,7 @@ def construct_visibility_graph(polygon):
     for i, p1 in enumerate(points):
         # we do not need to check i+1, since we already checked it in the previous loop
         for p2 in points[i + 2:]:
-            if is_visible(p1, p2, polygon):
+            if is_visible(p1, p2, pcheck):
                 G.add_edge(p1, p2, weight=p1.distance(p2))
     return G
 
