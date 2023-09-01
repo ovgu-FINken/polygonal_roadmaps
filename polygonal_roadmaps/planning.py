@@ -1259,7 +1259,7 @@ class CCRAgent:
         # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
         nc = set()
         for t in range(1, 1+self.block_steps):
-            nc |= ((p[0], t) for p in self.other_paths.values())
+            nc |= set((p[0], t) for p in self.other_paths.values())
         return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
 
 
