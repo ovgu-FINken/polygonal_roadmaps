@@ -1260,7 +1260,10 @@ class CCRAgent:
         nc = set()
         for t in range(1, 1+self.block_steps):
             nc |= set((p[0], t) for p in self.other_paths.values())
-        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
+        try:
+            return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
+        except nx.NetworkXNoPath:
+            return [self.state], np.inf
 
 
     def get_plan(self) -> list[int]:
