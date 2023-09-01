@@ -1186,7 +1186,7 @@ class BeliefState:
         return self.__str__()
 
 class CCRAgent:
-    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2):
+    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3):
         self.g = graph.copy()
         for node in self.g.nodes():
             self.g.add_edge(node, node, weight=planning_problem_parameters.wait_action_cost)
@@ -1206,6 +1206,7 @@ class CCRAgent:
         self.state_changed = True
         self.plans_changed = True
         self.inertia = inertia
+        self.block_steps = block_steps
         self.compute_plan()
         
     def update_other_paths(self, other_paths):
@@ -1256,7 +1257,9 @@ class CCRAgent:
                         continue
                 pred[node, i+1] = path[i]
         # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
-        nc = set( (p[0], 1) for p in self.other_paths.values())
+        nc = set()
+        for t in range(1, 1+self.block_steps):
+            nc |= ((p[0], t) for p in self.other_paths.values())
         return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
 
 
