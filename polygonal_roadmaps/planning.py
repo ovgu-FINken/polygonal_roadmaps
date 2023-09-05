@@ -1189,6 +1189,10 @@ class BeliefState:
     
     def __repr__(self):
         return self.__str__()
+    
+    def normalize(self):
+        s = sum(self.priorities.values())
+        self.priorities = {k: v / s for k, v in self.priorities.items()}
 
 class CCRAgent:
     def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3):
@@ -1349,6 +1353,18 @@ class CCRAgent:
         return 0.5 * bs + 0.5 * self.belief[node]
 
     def compute_qualities(self, node):
+        # compute qualities using flow graph
+        if self.state is None or self.goal is None or self.state == self.goal:
+            return BeliefState(node, {e[0]: 0.0 for e in self.g.in_edges(node)})
+        options = [e for e, _ in self.g.in_edges(node)]
+        fg = self.compute_flow_graph()
+        qualities = self.compute_qualities_flow(fg, node, options)
+        bs = BeliefState(state=node, priorities={e: q for e, q in qualities})
+        bs.normalize()
+        # logging.warn(f"bs: {bs}")
+        return bs
+
+    def compute_qualities_old(self, node):
         # compute qualities for each edge
         #qualities = [np.random.rand() for _ in edges]
         
@@ -1356,7 +1372,9 @@ class CCRAgent:
         g = self.compute_belief_graph()
         options = list(g.in_edges(node))
         
-        qualities = [self.compute_quality_2(g, e[0], e[1]) for e in options]
+        qualities = [self.compute_loss(g, e[0], e[1]) for e in options]
+        max_q = max(qualities)
+        qualities = [(max_q - q + 0.001) * (1+ 0.01*np.random.rand()) for q in qualities]
 
         # now we get paths lengeths for qualities: however, we want to maximise quality
         # and the shortest path is the best
@@ -1380,6 +1398,26 @@ class CCRAgent:
                 if e[0] != prio:
                     g.edges[e]['weight'] = 10e10
         return g
+    
+    def compute_flow_graph(self):
+        fg = self.g.copy()
+        # add flow weight and capacity
+        for e in fg.edges():
+            fg.edges[e]['flow_weight'] = int(self.g.edges[e]['weight'] * 100)
+            fg.edges[e]['capacity'] = 50
+            
+        for node, bel in self.belief.items():
+            # sort priorities
+            bel_sorted = sorted(bel.priorities.items(), key=lambda x: x[1])
+            # the capacity of the best edge should be 50
+            if len(bel_sorted) == 0:
+                continue
+            fg.edges[bel_sorted[0][0], bel.state]["capacity"] = 100
+            fg.edges[bel_sorted[0][0], bel.state]["flow_weight"] = 0
+            # the capacity of the other edges should be 4, 3,...0
+            for i, n in enumerate(bel_sorted[1:]):
+                fg.edges[n[0], node]["capacity"] = len(bel_sorted) - i
+        return fg
 
     def compute_quality(self, _, node:int, neighbour:int)->float:
         # now we compute the path with only one of those edges leading to the node present in the graph
@@ -1402,27 +1440,46 @@ class CCRAgent:
                     q -= 1.0
         return q
     
-    def compute_quality_2(self, g, node:int, neighbour:int)->float:
-        q0 = 10e10
+    def compute_loss(self, g, node:int, neighbour:int)->float:
+        p = []
+        if self.state == self.goal:
+            return 0.0
+        if self.state is None:
+            return 0.0
+        if self.goal is None:
+            return 0.0
         try:
-            q0 = nx.astar_path_length(g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
+            p = nx.shortest_path(g, source=self.state, target=self.goal, weight=self.planning_problem_parameters.weight_name)
         except (nx.NetworkXNoPath, nx.NodeNotFound):
-            return 1e-10
+            return 0.0
+        if node not in p:
+    
+
+            return 0.0 
+        if neighbour in p:
+            if p.index(neighbour) == p.index(node) - 1:
+                return 0.0 
         
+        q0 = nx.shortest_path_length(g, source=self.state, target=self.goal, weight=self.planning_problem_parameters.weight_name)
         g = g.copy()
         for e in g.in_edges(node):
             g.edges[e[0], e[1]]["weight"] = 10e10
         g.edges[neighbour, node]["weight"] = self.g.edges[neighbour, node]["weight"]
         # compute the path
         try:
-            q = nx.astar_path_length(g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
-            g.edges[neighbour, node]["weight"] = 10e10
+            q = nx.shortest_path_length(g, source=self.state, target=self.goal, weight=self.planning_problem_parameters.weight_name)
             return q - q0
         except (nx.NetworkXNoPath, nx.NodeNotFound):
-            g.edges[neighbour, node]["weight"] = 10e10
             return 10e10
         return 0.0
-        
+    
+    def compute_qualities_flow(self, g, node, options):
+        # compute the min cost flow
+        flow = nx.max_flow_min_cost(g, self.state, self.goal, weight="flow_weight", capacity="capacity")
+        # the flow indicates the quality of the edge
+        qualities = [(e, flow[e][node]+np.random.rand()*0.1) for e in options]
+        qualities.append((node, np.inf))
+        return qualities
 
     def set_belief(self, node, belief):
         self.belief_changed = True
@@ -1443,6 +1500,7 @@ class CCRAgent:
         for e in rme:
             self.belief_graph.edges[e[0], e[1]]["weight"] = self.g.edges[e[0], e[1]]["weight"]
             
+
 
 class PriorityAgent:
     def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3):
