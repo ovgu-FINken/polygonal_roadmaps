@@ -186,10 +186,15 @@ def spatial_path_and_cost(G, source, target, weight):
 
 def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, wait_action_cost=.00001, belief=None, predecessors=None, node_contraints=None, preferred_nodes=None, inertia=0.2) -> tuple[list, float]:
                                        
-    if not len(predecessors):
-        return spatial_path_and_cost(G, source=source, target=target, weight="weight")
-    if not len(belief):
-        return spatial_path_and_cost(G, source=source, target=target, weight="weight")
+    if belief is None:
+        belief = {}
+
+    if predecessors is None:
+        predecessors = {}
+    
+    if node_contraints is None:
+        node_contraints = set()
+                                       
     def true_cost_heuristic(u):
         return nx.shortest_path_length(G, source=u, target=target, weight="weight")
     if spacetime_heuristic is None:
@@ -1423,6 +1428,127 @@ class CCRAgent:
         rme = list(self.belief_graph.in_edges(node))
         for e in rme:
             self.belief_graph.edges[e[0], e[1]]["weight"] = self.g.edges[e[0], e[1]]["weight"]
+            
+
+class PriorityAgent:
+    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3):
+        self.g = graph.copy()
+        for node in self.g.nodes():
+            self.g.add_edge(node, node, weight=planning_problem_parameters.wait_action_cost)
+        self.state = state
+        self.goal = goal
+        self.planning_problem_parameters = planning_problem_parameters
+        self.other_paths: dict[int, list] = {}
+        self.index = index
+        self.plan: list[int] = []
+        self.cost = np.inf
+        self.conflicts = frozenset()
+        self.limit = limit
+        self.goal_changed = True
+        self.state_changed = True
+        self.plans_changed = True
+        self.inertia = inertia
+        self.block_steps = block_steps
+        self.compute_plan()
+        
+    def update_other_paths(self, other_paths):
+        ret = self._update_other_paths(other_paths)
+        if ret:
+            self.get_conflicts()
+        self.plans_changed |= ret
+        return ret
+
+    def _update_other_paths(self, other_paths):
+        # remove own path
+        op = {k: v for k, v in other_paths.items() if k != self.index}
+        
+        op = self.other_paths | op
+
+        if op == self.other_paths:
+            return False
+        self.other_paths = op
+        return True
+        
+    def update_state(self, state):
+        if state == self.state:
+            return
+        self.state_changed = True
+        self.state = state
+        self.compute_plan()
+        
+    def update_goal(self, goal):
+        if goal == self.goal:
+            return
+        self.goal_changed = True
+        self.goal = goal
+        self.compute_plan()
+
+    def get_path(self, source, goal):
+        preferred_nodes = set(self.plan)
+        nc = set()
+        for path in self.other_paths.values():
+            for i, node in enumerate(path[1:self.planning_problem_parameters.conflict_horizon+2]):
+                # we need to check, that there is no other edge with more priority used for this node
+                nc.add((node, i))
+                nc.add((node, i+1))
+                nc.add((node, i+2))
+                    
+        # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
+        for t in range(1, 1+self.block_steps):
+            nc |= set((p[0], t) for p in self.other_paths.values())
+        try:
+            return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=None, predecessors=set(), node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
+        except nx.NetworkXNoPath:
+            return [self.state], np.inf
+
+
+    def get_plan(self) -> list[int]:
+        self.compute_plan()
+        return self.plan
+    
+    def _get_conflicts(self, path):
+        conflicts = compute_all_k_conflicts([self.plan, path], limit=self.planning_problem_parameters.conflict_horizon, k=self.planning_problem_parameters.k_robustness)
+        self.conflicts = frozenset().union(conflicts, self.conflicts)
+
+    def get_conflicts(self):
+        self.conflicts = frozenset()
+        for _, path in self.other_paths.items():
+            self._get_conflicts(path)
+        return self.conflicts
+    
+    def replan_needed(self):
+        if self.state is None:
+            return False
+        if self.goal is None:
+            return False
+        if self.plan is None:
+            return True
+        if self.state_changed:
+            return True
+        if self.goal_changed:
+            return True
+        if self.plans_changed:
+            return True
+        return False
+    
+    def compute_plan(self):
+        if not self.replan_needed():
+            return
+        self.plan, self.cost = self.get_path(self.state, self.goal)
+        self.state_changed = False
+        self.goal_changed = False
+        self.plans_changed = False
+        
+    def make_plan_consistent(self):
+        """Update the plan of an agent
+        When other agents plans are passed, the agent will respect their right of way according to its belief
+
+
+        :param other_plans: list of plans of other agents
+        """
+        plan = self.plan
+        self.compute_plan()
+        return plan != self.plan
 
 
 class CCRv2(Planner):
