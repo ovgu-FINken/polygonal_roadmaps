@@ -1348,18 +1348,15 @@ class CCRAgent:
             return bs
         return 0.5 * bs + 0.5 * self.belief[node]
 
-    def compute_qualities(self, node, gamma=10):
+    def compute_qualities(self, node):
         # compute qualities for each edge
         #qualities = [np.random.rand() for _ in edges]
         
 
-        g = self.belief_graph.copy()
-        # remove all edges going to the node, except the one we want to compute the quality for
-        rme = list(g.in_edges(node))
-        for e in rme:
-            g.edges[e]['weight'] = 10e10
+        g = self.compute_belief_graph()
+        options = list(g.in_edges(node))
         
-        qualities = [self.compute_quality(g, e[0], e[1]) for e in rme]
+        qualities = [self.compute_quality_2(g, e[0], e[1]) for e in options]
 
         # now we get paths lengeths for qualities: however, we want to maximise quality
         # and the shortest path is the best
@@ -1367,8 +1364,22 @@ class CCRAgent:
         #if min(qualities) == np.inf:
         #    qualities = [1.0 for _ in qualities]
         #qualities = [0.001*np.random.rand() + 1 - q / max(qm for qm in qualities if qm != np.inf) for q in qualities]
-        bs = BeliefState(node, {e[0]: q for e, q in zip(rme, qualities)})
+        bs = BeliefState(node, {e[0]: q for e, q in zip(options, qualities)})
         return bs
+    
+    def compute_belief_graph(self):
+        # compute the belief graph
+        # we need to remove all edges, which have not top priority
+        g = self.g.copy()
+        for node, bs in self.belief.items():
+            # remove all edges going to the node, except the one we want to compute the quality for
+            # find max priority edge:
+            prio = max(bs.priorities.items(), key=lambda x: 0.0 if x[1]==np.inf else x[1])
+            rme = list(g.in_edges(node))
+            for e in rme:
+                if e[0] != prio:
+                    g.edges[e]['weight'] = 10e10
+        return g
 
     def compute_quality(self, _, node:int, neighbour:int)->float:
         # now we compute the path with only one of those edges leading to the node present in the graph
@@ -1394,10 +1405,13 @@ class CCRAgent:
     def compute_quality_2(self, g, node:int, neighbour:int)->float:
         q0 = 10e10
         try:
-            q0 = nx.astar_path_length(self.g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
+            q0 = nx.astar_path_length(g, self.state, self.goal, weight=self.planning_problem_parameters.weight_name)
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             return 1e-10
         
+        g = g.copy()
+        for e in g.in_edges(node):
+            g.edges[e[0], e[1]]["weight"] = 10e10
         g.edges[neighbour, node]["weight"] = self.g.edges[neighbour, node]["weight"]
         # compute the path
         try:
