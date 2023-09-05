@@ -1191,7 +1191,7 @@ class BeliefState:
         return self.__str__()
     
     def normalize(self):
-        s = sum(self.priorities.values())
+        s = sum(v for v in self.priorities.values() if v != np.inf)
         self.priorities = {k: v / s for k, v in self.priorities.items()}
 
 class CCRAgent:
@@ -1360,7 +1360,7 @@ class CCRAgent:
         fg = self.compute_flow_graph()
         qualities = self.compute_qualities_flow(fg, node, options)
         bs = BeliefState(state=node, priorities={e: q for e, q in qualities})
-        bs.normalize()
+        #bs.normalize()
         # logging.warn(f"bs: {bs}")
         return bs
 
@@ -1477,7 +1477,10 @@ class CCRAgent:
         # compute the min cost flow
         flow = nx.max_flow_min_cost(g, self.state, self.goal, weight="flow_weight", capacity="capacity")
         # the flow indicates the quality of the edge
-        qualities = [(e, flow[e][node]+np.random.rand()*0.1) for e in options]
+        # compute the maximum flow for normalization
+        max_flow = sum(flow[self.state].values())
+
+        qualities = [(e, flow[e][node] / max_flow +np.random.rand()*0.1) for e in options]
         qualities.append((node, np.inf))
         return qualities
 
