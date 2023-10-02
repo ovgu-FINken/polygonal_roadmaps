@@ -1255,7 +1255,7 @@ class CCRAgent:
         preferred_nodes = set(self.plan)
         for path in self.other_paths.values():
             for i, node in enumerate(path[1:]):
-                if i > self.planning_problem_parameters.conflict_horizon:
+                if self.planning_problem_parameters.conflict_horizon and i > self.planning_problem_parameters.conflict_horizon:
                     continue
                 # we need to check, that there is no other edge with more priority used for this node
                 if (node, i+1) in pred:
@@ -1506,7 +1506,7 @@ class CCRAgent:
 
 
 class PriorityAgent:
-    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3):
+    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3, priorities=None):
         self.g = graph.copy()
         for node in self.g.nodes():
             self.g.add_edge(node, node, weight=planning_problem_parameters.wait_action_cost)
@@ -1514,6 +1514,9 @@ class PriorityAgent:
         self.goal = goal
         self.planning_problem_parameters = planning_problem_parameters
         self.other_paths: dict[int, list] = {}
+        if priorities is None:
+            self.priorities = {index: 0}
+        
         self.index = index
         self.plan: list[int] = []
         self.cost = np.inf
@@ -1561,7 +1564,11 @@ class PriorityAgent:
     def get_path(self, source, goal):
         preferred_nodes = set(self.plan)
         nc = set()
-        for path in self.other_paths.values():
+        for agent, path in self.other_paths.items():
+            if agent not in self.priorities:
+                self.priorities[agent] = 0
+            if self.priorities[agent] < self.priorities[self.index]:
+                continue
             for i, node in enumerate(path[1:self.planning_problem_parameters.conflict_horizon+2]):
                 # we need to check, that there is no other edge with more priority used for this node
                 nc.add((node, i))
@@ -1676,8 +1683,9 @@ class CCRv2(Planner):
             conflicts = [bool(len(a.get_conflicts())) for a in self.agents]
             if not any(conflicts):
                 return
-            if not self.make_cdm_decision():
-                return
+            #if not self.make_cdm_decision():
+            #    return
+            self.make_cdm_decision()
             
         raise nx.NetworkXNoPath()
 
