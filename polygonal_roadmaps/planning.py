@@ -1632,6 +1632,50 @@ class PriorityAgent:
         self.compute_plan()
         return plan != self.plan
 
+class ProirityAgentPlanner(Planner):
+    def __init__(self, environment: Environment, **kwargs: dict) -> None:
+        self.environment = environment
+        self.replan_required = self.environment.planning_problem_parameters.conflict_horizon is None
+        self.history = []
+        self.g = self.environment.get_graph().to_directed()
+        compute_normalized_weight(self.g, self.environment.planning_problem_parameters.weight_name)
+        self.weight = "weight"
+        self.agents = [
+            PriorityAgent(self.g, sg[0], sg[1], self.environment.planning_problem_parameters, i)
+            for i, sg in enumerate(self.environment.get_state_goal_tuples())
+        ]
+    
+    def create_plan(self) -> list[list[int | None]]:
+        self.planning_loop()
+        # post-process plans to right format:
+        plans = [agent.get_plan() for agent in self.agents]
+        plans = [p + [None] for p in plans]
+        ret = zip_longest(*plans, fillvalue=None)
+        self.history.append({"solution": plans})
+        return list(ret)
+        
+    def planning_loop(self):
+        while True:
+            # update other paths
+            # make plans consistent
+            self.update_all_paths()
+
+            # make cdm decision, once all plans are consistent with the belief
+
+            conflicts = [bool(len(a.get_conflicts())) for a in self.agents]
+            if not any(conflicts):
+                return
+    
+    def update_all_paths(self):
+        self.plans = {a.index: a.get_plan() for a in self.agents}
+        for a in self.agents:
+            a.update_other_paths(self.plans)
+    
+    def make_all_plans_consistent(self):
+        for a in self.agents:
+            # this will change plans
+            a.make_plan_consistent()
+            self.update_all_paths()
 
 class CCRv2(Planner):
     def __init__(self, environment: Environment, **kwargs) -> None:
