@@ -1199,7 +1199,6 @@ class CCRAgent:
         self.g = graph.copy()
         for node in self.g.nodes():
             self.g.add_edge(node, node, weight=planning_problem_parameters.wait_action_cost)
-        self.belief_graph = graph.copy()
         self.state = state
         self.goal = goal
         self.planning_problem_parameters = planning_problem_parameters
@@ -1364,41 +1363,6 @@ class CCRAgent:
         # logging.warn(f"bs: {bs}")
         return bs
 
-    def compute_qualities_old(self, node):
-        # compute qualities for each edge
-        #qualities = [np.random.rand() for _ in edges]
-        
-
-        g = self.compute_belief_graph()
-        options = list(g.in_edges(node))
-        
-        qualities = [self.compute_loss(g, e[0], e[1]) for e in options]
-        max_q = max(qualities)
-        qualities = [(max_q - q + 0.001) * (1+ 0.01*np.random.rand()) for q in qualities]
-
-        # now we get paths lengeths for qualities: however, we want to maximise quality
-        # and the shortest path is the best
-        # we want the following scale: max -> 0.1, inf -> 0, min -> 1
-        #if min(qualities) == np.inf:
-        #    qualities = [1.0 for _ in qualities]
-        #qualities = [0.001*np.random.rand() + 1 - q / max(qm for qm in qualities if qm != np.inf) for q in qualities]
-        bs = BeliefState(node, {e[0]: q for e, q in zip(options, qualities)})
-        return bs
-    
-    def compute_belief_graph(self):
-        # compute the belief graph
-        # we need to remove all edges, which have not top priority
-        g = self.g.copy()
-        for node, bs in self.belief.items():
-            # remove all edges going to the node, except the one we want to compute the quality for
-            # find max priority edge:
-            prio = max(bs.priorities.items(), key=lambda x: 0.0 if x[1]==np.inf else x[1])
-            rme = list(g.in_edges(node))
-            for e in rme:
-                if e[0] != prio:
-                    g.edges[e]['weight'] = 10e10
-        return g
-    
     def compute_flow_graph(self):
         fg = self.g.copy()
         # add flow weight and capacity
@@ -1487,22 +1451,12 @@ class CCRAgent:
     def set_belief(self, node, belief):
         self.belief_changed = True
         self.belief[node] = belief
-        rme = list(self.belief_graph.in_edges(node))
-        for e in rme:
-            self.belief_graph.edges[e[0], e[1]]["weight"] = 10e10
-        bel_sorted = sorted(belief.priorities.items(), key=lambda x: x[1])
-        self.belief_graph.edges[bel_sorted[1][0], node]["weight"] = self.g.edges[bel_sorted[1][0], node]["weight"]
         
     def delete_belief(self, node):
         if node not in self.belief:
             return
         self.belief_changed = True
         del self.belief[node]
-        # restore edges in belief graph
-        rme = list(self.belief_graph.in_edges(node))
-        for e in rme:
-            self.belief_graph.edges[e[0], e[1]]["weight"] = self.g.edges[e[0], e[1]]["weight"]
-            
 
 
 class PriorityAgent:
@@ -1633,15 +1587,25 @@ class PriorityAgent:
         return plan != self.plan
 
 class ProirityAgentPlanner(Planner):
-    def __init__(self, environment: Environment, **kwargs: dict) -> None:
+    def __init__(self, environment: Environment, priority_method=None, max_iter=100, **kwargs: dict) -> None:
+        self.max_iter = max_iter
         self.environment = environment
         self.replan_required = self.environment.planning_problem_parameters.conflict_horizon is None
         self.history = []
         self.g = self.environment.get_graph().to_directed()
         compute_normalized_weight(self.g, self.environment.planning_problem_parameters.weight_name)
         self.weight = "weight"
+        priorities = None
+        if priority_method is not None:
+            if priority_method == "index":
+                priorities = {i: i for i, _ in enumerate(self.environment.get_state_goal_tuples())}
+            elif priority_method == "random":
+                priorities = {i: np.random.rand() for i, _ in enumerate(self.environment.get_state_goal_tuples())}
+            elif priority_method == "same":
+                priorities = {i: 0 for i, _ in enumerate(self.environment.get_state_goal_tuples())}
+        
         self.agents = [
-            PriorityAgent(self.g, sg[0], sg[1], self.environment.planning_problem_parameters, i)
+            PriorityAgent(self.g, sg[0], sg[1], self.environment.planning_problem_parameters, i, priorities=priorities)
             for i, sg in enumerate(self.environment.get_state_goal_tuples())
         ]
     
@@ -1655,12 +1619,9 @@ class ProirityAgentPlanner(Planner):
         return list(ret)
         
     def planning_loop(self):
-        while True:
-            # update other paths
-            # make plans consistent
+        for _ in range(self.max_iter):
+            self.make_all_plans_consistent()
             self.update_all_paths()
-
-            # make cdm decision, once all plans are consistent with the belief
 
             conflicts = [bool(len(a.get_conflicts())) for a in self.agents]
             if not any(conflicts):
@@ -1672,15 +1633,17 @@ class ProirityAgentPlanner(Planner):
             a.update_other_paths(self.plans)
     
     def make_all_plans_consistent(self):
+        self.update_all_paths()
         for a in self.agents:
             # this will change plans
             a.make_plan_consistent()
             self.update_all_paths()
 
 class CCRv2(Planner):
-    def __init__(self, environment: Environment, **kwargs) -> None:
+    def __init__(self, environment: Environment, max_iter=100, **kwargs) -> None:
         # initialize the planner.
         # if the horizon is not None, we want to replan after execution of one step
+        self.max_iter = max_iter
         self.environment = environment
         self.replan_required = self.environment.planning_problem_parameters.conflict_horizon is None
         self.history = []
@@ -1715,7 +1678,7 @@ class CCRv2(Planner):
         return np.random.choice(list(nodes))
     
     def planning_loop(self):
-        while True:
+        for _ in range(self.max_iter):
             # update other paths
             # make plans consistent
             self.update_all_paths()

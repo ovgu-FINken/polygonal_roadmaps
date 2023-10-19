@@ -6,6 +6,7 @@ from polygonal_roadmaps import geometry
 
 from dataclasses import dataclass
 from pathlib import Path
+import geopandas as gpd
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,10 @@ Start: {self.start}
 Goal: {self.goal}
 """
 
+    def get_position(self, state):
+        if self.g.nodes()[state]['pos'] is not None:
+            return self.g.nodes()[state]['pos']
+
 
 class GraphEnvironment(Environment):
     def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=PlanningProblemParameters()) -> None:
@@ -181,7 +186,8 @@ class RoadmapEnvironment(Environment):
     def __init__(self, 
                  map_path,
                  start_positions:tuple[float]|None,
-                 goal_positions:tuple[float]|None, 
+                 goal_positions:tuple[float]|None,
+                 n_agents:int|None=None,
                  generator_points=None, 
                  wx:tuple[float,float]|None=None, 
                  wy:tuple[float,float]|None=None, 
@@ -212,6 +218,10 @@ class RoadmapEnvironment(Environment):
         start_nodes = ()
         goal_nodes = ()
         if start_positions is not None:
+            start_positions = start_positions[:n_agents]
+        if goal_positions is not None:
+            goal_positions = goal_positions[:n_agents]
+        if start_positions is not None:
             start_nodes = tuple([geometry.find_nearest_node(graph, (x, y)) for x, y, *_ in start_positions])
             self._start_positions = start_positions
         if goal_positions is not None:
@@ -224,14 +234,13 @@ class RoadmapEnvironment(Environment):
         
     def plot(self, show=True, paths=None):
         import matplotlib.pyplot as plt
-        import geopandas as gpd
         if show:
             plt.figure()
-        inner = gpd.GeoSeries(n['geometry'].inner for _, n in self.g.nodes(data=True))
+        inner = self.get_inner_areas_gpd()
         inner.plot(ax=plt.gca(), alpha=0.5)
-        connection = gpd.GeoSeries(e['geometry'].connection for _, _, e in self.g.edges(data=True))
+        connection = self.get_connection_gdp()
         connection.plot(ax=plt.gca())
-        obstacles = gpd.GeoSeries([self._obstacles])
+        obstacles = self.get_obstacles_gpd()
         obstacles.plot(ax=plt.gca(), color='gray')
         start = gpd.GeoSeries([geometry.Point(x, y) for x, y, *_ in self._start_positions])
         start.plot(ax=plt.gca(), color='green')
@@ -245,6 +254,18 @@ class RoadmapEnvironment(Environment):
         if show:
             plt.show()
             plt.close()
+
+    def get_obstacles_gpd(self):
+        obstacles = gpd.GeoSeries(self._obstacles)
+        return obstacles
+
+    def get_connection_gdp(self):
+        connection = gpd.GeoSeries(e['geometry'].connection for _, _, e in self.g.edges(data=True))
+        return connection
+
+    def get_inner_areas_gpd(self):
+        inner = gpd.GeoSeries(n['geometry'].inner for _, n in self.g.nodes(data=True))
+        return inner
     
     def find_nearest_node(self, pos):
         return geometry.find_nearest_node(self.g, pos)

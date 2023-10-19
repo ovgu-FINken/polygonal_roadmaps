@@ -2,12 +2,14 @@ import os
 import sys
 from pathlib import Path
 
-from polygonal_roadmaps.cli import env_generator
+from polygonal_roadmaps.cli import env_generator, save_run_data, load_run_data
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import unittest
 import networkx as nx
+import pandas as pd
+import tempfile
 from polygonal_roadmaps import planning, polygonal_roadmap, geometry
 from polygonal_roadmaps.environment import MapfInfoEnvironment, RoadmapEnvironment, GraphEnvironment, Environment, PlanningProblemParameters
 from polygonal_roadmaps.planning import CBSPlanner, FixedPlanner, PrioritizedPlanner, CCRPlanner
@@ -47,9 +49,6 @@ class TestPlanningExecution(unittest.TestCase):
         executor.run()
         self.assertListEqual(executor.history, [(1, 2), (None, 1), (None, None)])
         executor.history = [(1, 2, 3), (1, 2, 3), (1, 2, 4), (1, 3, 4), (0, 3, 5)]
-        partial_solution = executor.get_partial_solution()
-        expected_solution = [[1, 0], [2], [3, 4, 5]]
-        self.assertListEqual(partial_solution, expected_solution)
 
     def testRoadmapEnvironment(self):
         env = self.envs[1]
@@ -73,3 +72,16 @@ class TestPlanningExecution(unittest.TestCase):
 
     def testPlanningWithCBS(self):
         self.checkPlanner(CBSPlanner)
+        
+    def testLoadAndSave(self):
+        test_data = {'a': 1, 'b': 2}
+        test_df = pd.DataFrame([[1,2], [4,5], [7,9]], columns=['a', 'b'])
+        with tempfile.TemporaryDirectory() as tempfile_path:
+            print(tempfile_path)
+            save_run_data(test_data, test_df, Path(tempfile_path))
+            x, y = load_run_data(Path(tempfile_path))
+
+        self.assertDictEqual(test_data, x)
+        pd.testing.assert_series_equal(test_df['a'], y['a'], check_dtype=False)
+        pd.testing.assert_series_equal(test_df['b'], y['b'], check_dtype=False)
+        

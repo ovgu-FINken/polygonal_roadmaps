@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from polygonal_roadmaps.environment import Environment, MapfInfoEnvironment
-from polygonal_roadmaps.planning import Planner, CBSPlanner
+from polygonal_roadmaps.planning import Planner, CBSPlanner, sum_of_cost, compute_solution_robustness
 from itertools import groupby
 import networkx as nx
 from pathlib import Path
@@ -20,7 +20,12 @@ class Executor():
         self.time_frame = time_frame
         self.profile = Profile()
 
-    def run(self, profiling=True):
+    def run(self, profiling=False, replan=None):
+        if replan is not None:
+            self.replan = replan
+        else:
+            self.replan = self.planner.replan_required
+        self.failed = False
         if len(self.history) >= self.time_frame:
             return
         if profiling:
@@ -35,14 +40,14 @@ class Executor():
                     # plan = plan[1:]
                     self.profile.disable()
                     return self.history
-                if self.planner.replan_required:
+                if self.replan:
                     # create new plan on updated state
                     plan = self.planner.create_plan(self.env)
                 else:
                     plan = plan[1:]
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
-            self.history = []
+            self.failed = True
         if profiling:
             self.profile.disable()
         logging.info("Planning complete")
@@ -59,7 +64,22 @@ class Executor():
         return self.env.state
 
     def get_history_as_dataframe(self):
-        return convert_history_to_df(self.history)
+        # self.history is a list of states, each state is a tuple of agent positions
+        # we want to create a dataframe where each row is a timestep and each column is an agent
+        # in addition, we want to get the agents position in the environment
+        records = []
+        for t, states in enumerate(self.history):
+            for i, state in enumerate(states):
+                records.append({
+                    't': t,
+                    'agent': i,
+                    'state': state,
+                })
+                position = self.env.get_position(state)
+                if position is not None:
+                    records[-1]['x'] = position[0]
+                    records[-1]['y'] = position[1]
+        return pd.DataFrame(records)
 
     def get_history_as_solution(self):
         solution = [[s] for s in self.history[0]]
@@ -71,28 +91,6 @@ class Executor():
             solution[i].append(g)
         return solution
 
-    def get_partial_solution(self):
-        solution = self.get_history_as_solution()
-        # create precedence constraints
-        node_visits = {}
-        for robot, plan in enumerate(solution):
-            for t, node in enumerate(plan):
-                if node not in node_visits:
-                    node_visits[node] = [(t, robot)]
-                else:
-                    node_visits[node].append((t, robot))
-        for k in node_visits.keys():
-            node_visits[k] = [robot for _, robot in sorted(node_visits[k], key=lambda x: x[0])]
-            node_visits[k] = [x[0] for x in groupby(node_visits[k])]
-
-        # snip solution
-        partial_solution = [[s[0]] for s in solution]
-        for robot, plan in enumerate(solution):
-            for node in plan[1:]:
-                if node_visits[node][0] == robot and partial_solution[robot][-1] != node:
-                    partial_solution[robot].append(node)
-        return partial_solution
-
     def get_result(self):
         return RunResult(
             self.history,
@@ -100,6 +98,27 @@ class Executor():
             {},
             None # planner_step_history=self.planner.get_step_history(),
         )
+    
+    def run_results(self):
+        # return the aggregated results of a run, i.e. flowtime, makespan, etc. as well as the cost of the run
+        print("compile run results")
+        solution = self.get_history_as_solution()
+        result = {}
+        result["steps"] = len(self.history)
+        result["flowtime"] = sum([len(x) for x in self.history]) / len(self.env.state)
+        result["makespan"] = max([ sum_of_cost([solution[i]]) for i, _ in enumerate(self.env.goal)])
+        result["sum_of_cost"] = sum_of_cost(solution, graph=self.env.g)
+        result["failed"] = self.failed
+        #result["robustness"] = compute_solution_robustness(solution)
+        result["astar"] = 0
+        result["spacetime_astar"] = 0
+        return result
+        
+    def run_history(self):
+        # return the history of a run, i.e. the state of the agents at each timestep, intermediate plans, etc.
+        # everything needed to make a video or otherwise visualize the run
+        print("compile run history")
+        return self.get_history_as_dataframe()
 
 
 def create_df_from_profile(profile):
@@ -136,16 +155,6 @@ def create_df_from_profile(profile):
     df['function'] = df["filename:lineno(function)"].apply(extract_function)
     return df
     
-
-def convert_history_to_df(history):
-    records = []
-    for t, state in enumerate(history):
-        for agent, pos in enumerate(state):
-            if pos is None:
-                continue
-            records.append({'agent': agent, 'x': pos[0], 'y': pos[1], 't': t})
-    return pd.DataFrame(records)
-
 
 def make_run(scen_path=None, n_agents=2, profiling=None):
     if scen_path is None:

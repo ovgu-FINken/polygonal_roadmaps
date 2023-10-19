@@ -37,12 +37,12 @@ def read_pickle(location):
 def load_results(path=None):
     if path is None:
         path = "results"
-    result_files = glob.glob(f"{path}/*/*/**/result.pkl")
+    result_files = glob.glob(f"{path}/**/result.pkl", recursive=True)
     logging.debug(f'loading results: {result_files}')
     pkls = {}
-    for dings in result_files:
-        _, planner_config, even, scen, *_ = dings.split('/')
-        pkls[planner_config, even, scen] = read_pickle(dings)
+    for result_file in result_files:
+        _, planner_config, even, scen, *_ = result_file.split('/')
+        pkls[planner_config, even, scen] = read_pickle(result_file)
     profile_data = []
     for cfg, pkl in tqdm(pkls.items()):
         if pkl is None:
@@ -71,7 +71,7 @@ def load_results(path=None):
             logging.warn(f'{pkl}')
         else:
             df['scen'] = pkl.config['scen']
-            df['map_file'] = pkl.config['map_file']
+            #df['map_file'] = pkl.config['map_file']
             df['planner'] = pkl.config['planner']
             for k, v in pkl.config['planner_args'].items():
                 df[k] = v
@@ -91,6 +91,7 @@ def raise_timeout(number, _):
 
 
 def run_all(args):
+    print("running")
     # run all jobs specified by args
 
     # set signal handelrs for sigterm, sigxcpu
@@ -143,14 +144,20 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
     data = []
-    for i, env in enumerate(env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)):
+    envs = env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)
+    print(f"found {len(envs)} scenarios")
+    for i, env in enumerate(envs):
+        print("run scenario", scen_str, i)
         if i>=n_scenarios:
             break
+        print("setup")
         planner = create_planner_from_config(planner_config, env)
-        path = Path('results') / planner_config_file / scen_str
+        path = Path('results') / planner_config_file / scen_str / str(index)
+        print("create results directory")
         path.mkdir(parents=True, exist_ok=True)
         planner_config.update({'scen': scen_str, "index": i})
-        data.append(run_one(planner, result_path=path / 'result.pkl', config=planner_config))
+        print("run")
+        data.append(run_one(planner, result_path=path, config=planner_config))
     return data
 
 
@@ -186,7 +193,7 @@ def load_driving_swarm_scenarios(map_yml, scenario_yml, n_agents, index=None, pl
                              scenario["start"], scenario["goal"], 
                              planning_problem_parameters=planning_problem_parameters, 
                              generator_points=generators, offset=g["offset"],
-                             wx=g["wx"], wy=g["wy"])
+                             wx=g["wx"], wy=g["wy"], n_agents=n_agents)
     return [env]
 
 
@@ -199,6 +206,19 @@ def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_probl
         scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
     return (MapfInfoEnvironment(scen, n_agents=n_agents, planning_problem_parameters=planning_problem_parameters) for scen in scenarios)
     
+
+def save_run_data(run_data:dict, run_history:pd.DataFrame, result_path:Path):
+    with open(result_path / "result.yml", mode="w") as results:
+        yaml.dump(run_data, results)
+    run_history.to_csv(result_path / "history.csv", index=False)
+    
+
+def load_run_data(result_path:Path):
+    with open(result_path / "result.yml", mode="rb") as results:
+        run_data = yaml.load(results)
+    run_history = pd.read_csv(result_path / "history.csv")
+    return run_data, run_history
+
 
 def run_one(planner, result_path=None, config=None):
     data = None
@@ -223,27 +243,10 @@ def run_one(planner, result_path=None, config=None):
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
-        # reset resource limit before saving results (we don't want to trigger this during result)
-        data = ex.get_result()
-        data.failed = ex.failed
-        if not ex.failed and len(ex.history):
-            data.soc = planning.sum_of_cost(ex.get_history_as_solution(), graph=ex.env.g, weight="dist")
-            data.makespan = len(ex.history)
-            data.k = planning.compute_solution_robustness(ex.get_history_as_solution())
-            data.steps = sum([len(p) for p in ex.get_history_as_solution()])
-        else:
-            data.soc = -1
-            data.makespan = -1
-            data.k = -1
-            data.steps = -1
-        print(f'took {len(ex.history)} steps to completion')
-        data.config = config
-        if result_path is not None:
-            with open(result_path, mode="wb") as results:
-                pickle.dump(data, results)
-        print(f'k-robustness with k={data.k}')
-        print("failed" if data.failed else "succeeded")
-        print('-----------------')
+        run_data = ex.run_results()
+        run_history = ex.run_history()
+        run_data["config"] = config
+        save_run_data(run_data, run_history, result_path)
     return data
 
 

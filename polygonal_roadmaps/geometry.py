@@ -72,13 +72,31 @@ def add_nodes_to_graph(generator_points, limits, offset):
     return nodes
 
 
+
 def add_edges_to_graph(nodes, offset):
+    def correct_geom(geom):
+        if geom is None:
+            return False
+        if geom.is_empty:
+            return False
+        if not geom.is_valid:
+            return False
+        if geom.exterior.geom_type == 'LineString':
+            return True
+        if geom.exterior.geom_type == 'LinearRing':
+            return True
+        return False
+    
     edges = []
     for i, n1 in enumerate(nodes):
+        if not correct_geom(n1.outer):
+            continue
         for j, n2 in enumerate(nodes):
             if i >= j:
                 continue
-            x = shapely.ops.shared_paths(n1.outer.exterior, n2.outer.exterior)
+            if not correct_geom(n2.outer):
+                continue
+            x = shapely.ops.shared_paths(LineString(n1.outer.exterior), LineString(n2.outer.exterior))
             if x.is_empty:
                 continue
             e = [a for a in x.geoms if not a.is_empty and a.length > 0]
