@@ -136,6 +136,8 @@ def create_planner_from_config(config, env) -> planning.Planner:
         return planning.CCRv2(env, **config['planner_args'])
     elif config['planner'] == 'PrioritizedPlanner':
         return planning.PrioritizedPlanner(env, **config['planner_args'])
+    elif config['planner'] == 'PriorityAgentPlanner':
+        return planning.PriorityAgentPlanner(env, **config['planner_args'])
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
@@ -145,7 +147,6 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
         planner_config = yaml.safe_load(stream)
     data = []
     envs = env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)
-    print(f"found {len(envs)} scenarios")
     for i, env in enumerate(envs):
         print("run scenario", scen_str, i)
         if i>=n_scenarios:
@@ -155,7 +156,7 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
         path = Path('results') / planner_config_file / scen_str / str(index)
         print("create results directory")
         path.mkdir(parents=True, exist_ok=True)
-        planner_config.update({'scen': scen_str, "index": i})
+        planner_config.update({'scen': scen_str, "index": index, "xindex": i})
         print("run")
         data.append(run_one(planner, result_path=path, config=planner_config))
     return data
@@ -249,6 +250,13 @@ def run_one(planner, result_path=None, config=None):
         save_run_data(run_data, run_history, result_path)
     return data
 
+def aggregate_results(result_path):
+    results_files = glob.glob(f"{result_path}/**/result.yml", recursive=True)
+    data = []
+    for result_file in results_files:
+        with open(result_file) as stream:
+            data.append(yaml.safe_load(stream))
+    return pd.json_normalize(data)
 
 def cli_main() -> None:
     parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")

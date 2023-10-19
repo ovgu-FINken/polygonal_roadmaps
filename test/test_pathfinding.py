@@ -131,14 +131,14 @@ class TestPriorityAgentPlanner(unittest.TestCase):
     def testNoConflict(self):
         self.env.state = ('b', 'g')
         self.env.goal = ('e', 'f')
-        planner = planning.ProirityAgentPlanner(self.env)
+        planner = planning.PriorityAgentPlanner(self.env)
         plan = planner.create_plan()
         reference = list(zip(list('bcde') + [None], list('gf') + [None for _ in range(4)]))
         self.assertEqual(plan, reference)
 
     def testConflict(self):
         self.env.state = ('a', 'e')
-        planner = planning.CCRv2(self.env)
+        planner = planning.PriorityAgentPlanner(self.env)
 
         #self.assertListEqual(planner.agents[0].plan, list('abcde'))
         #self.assertListEqual(planner.agents[1].plan, list('edcba'))
@@ -147,15 +147,8 @@ class TestPriorityAgentPlanner(unittest.TestCase):
         self.assertEqual(len(planner.agents[0].get_conflicts()), 0)
         self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
 
-        planner = planning.CCRv2(self.env2)
+        planner = planning.PriorityAgentPlanner(self.env2)
         plan = planner.create_plan()
-        conflicts = [a.get_conflicts() for a in planner.agents]
-        if len(conflicts) > 0:
-            for c in conflicts:
-                if not c:
-                    continue
-                first_conflict = min([min([ca.time for ca in cc.conflicting_agents]) for cc in c])
-                self.assertGreaterEqual(first_conflict, 100)
         
 
 

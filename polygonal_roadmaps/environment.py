@@ -124,7 +124,9 @@ Goal: {self.goal}
 """
 
     def get_position(self, state):
-        if self.g.nodes()[state]['pos'] is not None:
+        if state is None:
+            return
+        if 'pos' in self.g.nodes()[state]:
             return self.g.nodes()[state]['pos']
 
 

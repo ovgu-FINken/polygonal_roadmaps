@@ -1470,6 +1470,8 @@ class PriorityAgent:
         self.other_paths: dict[int, list] = {}
         if priorities is None:
             self.priorities = {index: 0}
+        else:
+            self.priorities = priorities
         
         self.index = index
         self.plan: list[int] = []
@@ -1523,7 +1525,10 @@ class PriorityAgent:
                 self.priorities[agent] = 0
             if self.priorities[agent] < self.priorities[self.index]:
                 continue
-            for i, node in enumerate(path[1:self.planning_problem_parameters.conflict_horizon+2]):
+            horizon = self.planning_problem_parameters.conflict_horizon
+            if horizon is None:
+                horizon = len(path)
+            for i, node in enumerate(path[1:horizon+2]):
                 # we need to check, that there is no other edge with more priority used for this node
                 nc.add((node, i))
                 nc.add((node, i+1))
@@ -1586,7 +1591,7 @@ class PriorityAgent:
         self.compute_plan()
         return plan != self.plan
 
-class ProirityAgentPlanner(Planner):
+class PriorityAgentPlanner(Planner):
     def __init__(self, environment: Environment, priority_method=None, max_iter=100, **kwargs: dict) -> None:
         self.max_iter = max_iter
         self.environment = environment
@@ -1609,7 +1614,7 @@ class ProirityAgentPlanner(Planner):
             for i, sg in enumerate(self.environment.get_state_goal_tuples())
         ]
     
-    def create_plan(self) -> list[list[int | None]]:
+    def create_plan(self, *_) -> list[list[int | None]]:
         self.planning_loop()
         # post-process plans to right format:
         plans = [agent.get_plan() for agent in self.agents]
