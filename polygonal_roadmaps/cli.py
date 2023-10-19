@@ -211,13 +211,13 @@ def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_probl
 def save_run_data(run_data:dict, run_history:pd.DataFrame, result_path:Path):
     with open(result_path / "result.yml", mode="w") as results:
         yaml.dump(run_data, results)
-    run_history.to_csv(result_path / "history.csv", index=False)
+    run_history.to_feather(result_path / "history.feather")
     
 
 def load_run_data(result_path:Path):
     with open(result_path / "result.yml", mode="rb") as results:
         run_data = yaml.load(results)
-    run_history = pd.read_csv(result_path / "history.csv")
+    run_history = pd.read_feather(result_path / "history.feather")
     return run_data, run_history
 
 
