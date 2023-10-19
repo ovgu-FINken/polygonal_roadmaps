@@ -1,0 +1,3 @@
+planner:  PriorityAgentPlanner
+planner_args:
+  priority_method: same
