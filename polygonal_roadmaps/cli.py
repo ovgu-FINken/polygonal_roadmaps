@@ -118,7 +118,7 @@ def run_all(args):
         resource.setrlimit(resource.RLIMIT_CPU, (limit, hardlimit))
     for planner in args.planner:
         for scenario in args.scenarios:
-            run_scenario(scenario, planner, n_agents=args.n_agents, index=args.index, problem_parameters=args.problem_parameters)
+            run_scenario(scenario, planner, n_agents=args.n_agents, index=args.index, problem_parameters=args.problem_parameters, n_runs=args.n_runs)
 
 
 def create_planner_from_config_file(config_file, env):
@@ -141,24 +141,26 @@ def create_planner_from_config(config, env) -> planning.Planner:
     raise NotImplementedError(f"planner {config['planner']} does not exist.")
 
 
-def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:None|int=None, n_scenarios:int=25, problem_parameters:str|None=None):
+def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:None|int=None, n_scenarios:int=25, problem_parameters:str|None=None, n_runs:int=1):
     planner_file = Path("benchmark") / 'planner_config' / planner_config_file
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
+    planner_config['planner_file'] = planner_file
     data = []
-    envs = env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)
-    for i, env in enumerate(envs):
-        print("run scenario", scen_str, i)
-        if i>=n_scenarios:
-            break
-        print("setup")
-        planner = create_planner_from_config(planner_config, env)
-        path = Path('results') / planner_config_file / scen_str / str(index)
-        print("create results directory")
-        path.mkdir(parents=True, exist_ok=True)
-        planner_config.update({'scen': scen_str, "index": index, "xindex": i})
-        print("run")
-        data.append(run_one(planner, result_path=path, config=planner_config))
+    for run in range(n_runs):
+        envs = env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)
+        for i, env in enumerate(envs):
+            print("run scenario", scen_str, i+run)
+            if i>=n_scenarios:
+                break
+            print("setup")
+            planner = create_planner_from_config(planner_config, env)
+            path = Path('results') / planner_config_file / scen_str / str(index + run)
+            print("create results directory")
+            path.mkdir(parents=True, exist_ok=True)
+            planner_config.update({'scen': scen_str, "index": index+run, "xindex": i})
+            print("run")
+            data.append(run_one(planner, result_path=path, config=planner_config))
     return data
 
 
@@ -255,7 +257,9 @@ def aggregate_results(result_path):
     data = []
     for result_file in results_files:
         with open(result_file) as stream:
-            data.append(yaml.safe_load(stream))
+            record = yaml.safe_load(stream)
+            record['history'] = Path(result_file).parent / "history.feather"
+            data.append(record)
     return pd.json_normalize(data)
 
 def cli_main() -> None:
@@ -269,6 +273,7 @@ def cli_main() -> None:
     parser.add_argument("-memlimit", type=int, default=None, help="Memory Limit in Gb")
     parser.add_argument("-loglevel", type=str, default=None)
     parser.add_argument("-logfile", type=str, default=None)
+    parser.add_argument("-n_runs", type=int, default=1)
     args = parser.parse_args()
     run_all(args)
     

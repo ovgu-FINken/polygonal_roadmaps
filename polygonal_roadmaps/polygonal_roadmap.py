@@ -15,8 +15,10 @@ import pandas as pd
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 1000) -> None:
         self.env = environment
+        self.env.state = self.env.start
         self.planner = planner
-        self.history = [self.env.state]
+        self.history = []
+        self.plans = []
         self.time_frame = time_frame
         self.profile = Profile()
 
@@ -25,13 +27,15 @@ class Executor():
             self.replan = replan
         else:
             self.replan = self.planner.replan_required
-        self.failed = False
+        self.failed = True
         if len(self.history) >= self.time_frame:
             return
         if profiling:
             self.profile.enable()
         try:
             plan = self.planner.create_plan(self.env)
+            if not plan:
+                return self.history
             for i in range(self.time_frame):
                 logging.info(f"At iteration {i} / {self.time_frame}")
                 self.step(plan)
@@ -39,6 +43,7 @@ class Executor():
                 if all(s is None for s in self.env.state):
                     # plan = plan[1:]
                     self.profile.disable()
+                    self.failed = False
                     return self.history
                 if self.replan:
                     # create new plan on updated state
@@ -47,7 +52,6 @@ class Executor():
                     plan = plan[1:]
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
-            self.failed = True
         if profiling:
             self.profile.disable()
         logging.info("Planning complete")
@@ -55,18 +59,20 @@ class Executor():
     def step(self, plan):
         # advance agents
         logging.info(f"plan: {plan}")
+        self.history.append(self.env.state)
+        self.plans.append(plan)
         state = list(plan[1])
         for i, s in enumerate(self.env.goal):
             if state[i] == s:
                 state[i] = None
         self.env.state = tuple(state)
-        self.history.append(self.env.state)
         return self.env.state
 
     def get_history_as_dataframe(self):
         # self.history is a list of states, each state is a tuple of agent positions
         # we want to create a dataframe where each row is a timestep and each column is an agent
         # in addition, we want to get the agents position in the environment
+        # and the plan that the agent is executing
         records = []
         for t, states in enumerate(self.history):
             for i, state in enumerate(states):
@@ -79,6 +85,9 @@ class Executor():
                 if position is not None:
                     records[-1]['x'] = position[0]
                     records[-1]['y'] = position[1]
+                if self.plans:
+                    plan = [p[i] for p in self.plans[t]]
+                    records[-1]['plan'] = plan
         return pd.DataFrame(records)
 
     def get_history_as_solution(self):

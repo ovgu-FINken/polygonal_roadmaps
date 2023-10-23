@@ -1615,6 +1615,7 @@ class PriorityAgentPlanner(Planner):
         ]
     
     def create_plan(self, *_) -> list[list[int | None]]:
+        self.update_state(self.environment.state)
         self.planning_loop()
         # post-process plans to right format:
         plans = [agent.get_plan() for agent in self.agents]
@@ -1622,6 +1623,10 @@ class PriorityAgentPlanner(Planner):
         ret = zip_longest(*plans, fillvalue=None)
         self.history.append({"solution": plans})
         return list(ret)
+
+    def update_state(self, state):
+        for i, a in enumerate(self.agents):
+            a.update_state(state[i])
         
     def planning_loop(self):
         for _ in range(self.max_iter):
@@ -1710,16 +1715,20 @@ class CCRv2(Planner):
         for a in self.agents:
             # this will change plans
             a.make_plan_consistent()
+            
+    def update_state(self, state):
+        for i, a in enumerate(self.agents):
+            a.update_state(state[i])
                 
     def create_plan(self, *_) -> list[list[int | None]]:
         """Create a plan for all agents
         
         :return: list of plans for all agents
         """
+        self.update_state(self.environment.state)
         self.planning_loop()
         # post-process plans to right format:
-        plans = [agent.get_plan() for agent in self.agents]
-        plans = [p + [None] for p in plans]
+        plans = [agent.get_plan() + [None] for agent in self.agents]
         ret = zip_longest(*plans, fillvalue=None)
         self.history.append({"solution": plans})
         return list(ret)
