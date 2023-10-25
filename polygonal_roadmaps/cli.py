@@ -11,6 +11,7 @@ from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import geometry, planning, polygonal_roadmap
 from polygonal_roadmaps.environment import PlanningProblemParameters, Environment, RoadmapEnvironment, MapfInfoEnvironment
+from icecream import ic
 
 class TimeoutError(Exception):
     pass
@@ -145,8 +146,9 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
     planner_file = Path("benchmark") / 'planner_config' / planner_config_file
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
-    planner_config['planner_file'] = planner_file
     data = []
+    if index is None:
+        index = 1
     for run in range(n_runs):
         envs = env_generator(scen_str, n_agents, index=index, problem_parameters=problem_parameters)
         for i, env in enumerate(envs):
@@ -158,7 +160,7 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
             path = Path('results') / planner_config_file / scen_str / str(index + run)
             print("create results directory")
             path.mkdir(parents=True, exist_ok=True)
-            planner_config.update({'scen': scen_str, "index": index+run, "xindex": i})
+            planner_config.update({'scen': scen_str, "index": index+run, "xindex": i, "planner_file": planner_config_file})
             print("run")
             data.append(run_one(planner, result_path=path, config=planner_config))
     return data

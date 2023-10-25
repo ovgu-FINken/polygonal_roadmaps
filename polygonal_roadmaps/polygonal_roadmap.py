@@ -1,16 +1,39 @@
 from dataclasses import dataclass
 from polygonal_roadmaps.environment import Environment, MapfInfoEnvironment
-from polygonal_roadmaps.planning import Planner, CBSPlanner, sum_of_cost, compute_solution_robustness
+from polygonal_roadmaps.planning import Planner, CBSPlanner, sum_of_cost, compute_solution_robustness, Plans
 from itertools import groupby
 import networkx as nx
 from pathlib import Path
 from cProfile import Profile
 import io
 import pstats
+from icecream import ic
 
 import logging
 
 import pandas as pd
+
+def replace_goal_with_none(state, goal):
+    return tuple([None if s == g else s for s, g in zip(state, goal)])
+
+def next_state_is_valid(next_state, env):
+    if len(next_state) != len(env.state):
+        return False
+    for s, ns in zip(env.state, next_state):
+        if s is None:
+            continue
+        if ns is None:
+            continue
+        if ns == s:
+            continue
+        if not env.g.has_edge(s, ns):
+            return False
+    nodes = [n for n in next_state if n is not None]
+    if len(nodes) != len(set(nodes)):
+        return False
+    
+    return True
+
 
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 1000) -> None:
@@ -49,7 +72,7 @@ class Executor():
                     # create new plan on updated state
                     plan = self.planner.create_plan(self.env)
                 else:
-                    plan = plan[1:]
+                    plan = Plans([p[1:] for p in plan])
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
         if profiling:
@@ -61,11 +84,9 @@ class Executor():
         logging.info(f"plan: {plan}")
         self.history.append(self.env.state)
         self.plans.append(plan)
-        state = list(plan[1])
-        for i, s in enumerate(self.env.goal):
-            if state[i] == s:
-                state[i] = None
-        self.env.state = tuple(state)
+        state = plan.get_next_state()
+        assert next_state_is_valid(state, self.env), f"transition{self.env.state} -> {state} is not valid"
+        self.env.state = replace_goal_with_none(state, self.env.goal)
         return self.env.state
 
     def get_history_as_dataframe(self):
@@ -85,20 +106,15 @@ class Executor():
                 if position is not None:
                     records[-1]['x'] = position[0]
                     records[-1]['y'] = position[1]
-                if self.plans:
-                    plan = [p[i] for p in self.plans[t]]
+                if False:
+                    plan = [p[i] for p in self.plans[t].plans]
                     records[-1]['plan'] = plan
         return pd.DataFrame(records)
 
     def get_history_as_solution(self):
-        solution = [[s] for s in self.history[0]]
-        for state in self.history[1:]:
-            for i, s in enumerate(state):
-                if s is not None:
-                    solution[i].append(s)
-        for i, g in enumerate(self.env.goal):
-            solution[i].append(g)
-        return solution
+        # create plans object form history
+        p = Plans.from_state_list(self.history)
+        return p.plans
 
     def get_result(self):
         return RunResult(

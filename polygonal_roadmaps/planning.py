@@ -9,25 +9,96 @@ from heapq import heappush, heappop
 from itertools import count, zip_longest
 from functools import partial
 from typing import Union
+from abc import ABC, abstractmethod
 import copy
 
 from polygonal_roadmaps.environment import Environment
 import logging
 
-class Planner(Protocol):
+@dataclass(eq=True, init=True)
+class Plans():
+    plans: list[list[int]]
+    
+    def __iter__(self):
+        return iter(self.plans)
+    
+    def __getitem__(self, key):
+        return self.plans[key]
+    
+    def as_state_list(self):
+        return list(zip_longest(*self.plans, fillvalue=None))
+    
+    @classmethod
+    def from_state_list(cls, state_list):
+        if not len(state_list):
+            return cls([])
+        plans = [[] for _ in state_list[0]]
+        for _, state in enumerate(state_list):
+            for i, s in enumerate(state):
+                if s is None:
+                    continue
+                plans[i].append(s)
+            
+        return cls(plans)
+
+    def is_valid(self, env: Environment|None = None, k:int=1, limit:int=None):
+        """ check if the plan is valid
+            - check if there are conflicts within the plan
+            - check if the plan is valid with in the given environment
+            - if no environment is passed, only the conflicts are checked
+            - if an environmnet is passed, k and limit are overwritten by the environment's parameters
+        """
+        # check if there are conflicts within the plan:
+        if env is not None:
+            k = env.planning_problem_parameters.conflict_horizon
+            limit = env.planning_problem_parameters.time_limit
+        conflicts = compute_all_k_conflicts(self, limit=limit, k=k)
+        if len(conflicts):
+            logging.info(f'conflicts: {conflicts}')
+            return False
+        
+        # check if all edges are valid within the environment
+        if env is None:
+            return True
+        for _, path in enumerate(self):
+            for n1, n2 in zip(path[:-1], path[1:]):
+                if n1 is None or n2 is None:
+                    continue
+                if n1 == n2:
+                    continue
+                if not env.g.has_edge(n1, n2):
+                    logging.info(f'no edge between {n1} and {n2}')
+                    return False
+        return True
+    
+    def get_state(self, t):
+        sl = self.as_state_list()
+        if not len(sl):
+            return ()
+        if t >= len(sl):
+            return (None for _ in sl[0])
+        return sl[t]
+
+    def get_next_state(self):
+        return self.get_state(1)
+
+class Planner(ABC):
     environment: Environment
     replan_required: bool
     history: list[list[int | None]]
+
+    @abstractmethod
     def __init__(self, environment: Environment, **kwargs: dict) -> None:
         """all plans should be initialized with an environment, general parameters and problem specific parameters passed as keyword arguments
 
         :param environment: environment
         :param planning_problem_parameters: environment parameters
         """
-        ...
-    
-    def create_plan(self) -> list[list[int | None]]:
-        ...
+        pass
+
+    @abstractmethod
+    def create_plan(self) -> Plans:
+        pass
 
 
 @dataclass(eq=True, frozen=True, init=True)
@@ -84,12 +155,13 @@ def compute_node_occupancy(paths: list, limit: Union[int, None] = None) -> dict:
     node_occupancy = {}
     for i, path in enumerate(paths):
         for t, node in enumerate(pad_path(path, limit=limit)):
+            if node is None:
+                continue
             if (t, node) not in node_occupancy:
                 node_occupancy[t, node] = [i]
             else:
                 node_occupancy[t, node] += [i]
     return node_occupancy
-
 
 @dataclass(frozen=True, eq=True, init=True)
 class Conflict:
@@ -137,6 +209,27 @@ def compute_k_robustness_conflicts(paths, limit: Union[int, None] = None, k: int
                 constraints |= {NodeConstraint(time=t - k, node=node, agent=j) for j in conflicting_agents}
             conflicts.append(Conflict(k=k, conflicting_agents=frozenset(constraints)))
     return set(conflicts)
+
+def compute_k_robustness_conflicts_new(paths, limit: Union[int, None] = None, k: int = 0, node_occupancy: Union[dict, None] = None) -> set[Conflict]:
+    def compute_agent_occupancy(paths, limit: Union[int, None] = None) -> dict:
+        agent_occupancy = {}
+        for i, path in enumerate(paths):
+            agent_occupancy[i] = { (t,  node) for t, node in enumerate(pad_path(path, limit=limit)) }
+        return agent_occupancy
+    shifted_paths = [p[k:] for p in paths]
+    occupancy = compute_agent_occupancy(paths, limit=limit)
+    shifted_occupancy = compute_agent_occupancy(shifted_paths, limit=limit)
+    conflicts = set()
+    for i, _ in enumerate(paths):
+        for j, _ in enumerate(paths):
+            if i == j:
+                continue
+            intersetion = occupancy[i] & shifted_occupancy[j]
+            # when the intersection is not empty, there are conflicts
+            if len(intersetion):
+                conflicts.add(Conflict(k=k, conflicting_agents=frozenset(NodeConstraint(time=occupancy[i][0], node=occupancy[i][1], agent=i), NodeConstraint(time=shifted_occupancy[j][0]+2, node=shifted_occupancy[j][1], agent=j))))
+                              
+    return conflicts
 
 def compute_solution_robustness(solution, limit: Union[int, None] = None) -> int:
     maximum = max([len(path) for path in solution])
@@ -617,6 +710,7 @@ class CBS:
 
     def update_state(self, state):
         self.cache.reset(state_only=True)
+        self.env.state = state
         assert len(state) == len(self.start_goal)
         self.start_goal = [(s, g) if s is not None else (g, g) for s, (_, g) in zip(state, self.start_goal)]
         for start, _ in self.start_goal:
@@ -820,6 +914,8 @@ def check_nodes_connected(graph, paths):
         for e in zip(p[:-1], p[1:]):
             if e[0] == e[1]:
                 continue
+            if e[0] is None or e[1] is None:
+                continue
             if e not in graph.edges():
                 logging.warning(f"edge {e} not in graph, for path {p}")
                 return False
@@ -841,7 +937,10 @@ def prioritized_plans(env: Environment,
         pad_limit = None
     if planning_problem_parameters.conflict_horizon is not None:
         pad_limit = planning_problem_parameters.conflict_horizon
-    for start, goal in env.get_state_goal_tuples():
+    for start, goal in zip(env.state, env.goal):
+        if start is None:
+            solution.append([])
+            continue
         node_occupancy = compute_node_occupancy(solution, limit=pad_limit)
         constraints = set()
         for t, node in node_occupancy.keys():
@@ -888,15 +987,7 @@ class CCRPlanner(Planner):
         plans = self.run()
         # reintroduce plan for those states that have already finished -> i.e., where state is None
         self.history.append({"solution": plans, "priorities": list(zip(self.priorities_in, self.priorities))})
-        logging.info(f'plans: {plans}')
-        ret = []
-        for i, s in enumerate(self.environment.state):
-            if s is not None:
-                ret.append(plans[i] + [None])
-            else:
-                ret.append([None])
-        ret = zip_longest(*ret, fillvalue=None)
-        return list(ret)
+        return Plans(plans)
 
     def run(self):
         conflicts = [None]
@@ -1094,7 +1185,7 @@ class FixedPlanner(Planner):
         self.history = []
 
     def create_plan(self, *_):
-        return self._plan
+        return Plans.from_state_list(self._plan)
 
 
 class PrioritizedPlanner(Planner):
@@ -1106,20 +1197,10 @@ class PrioritizedPlanner(Planner):
         self.kwargs = kwargs
         self.history = []
 
-    def create_plan(self, *_):
+    def create_plan(self, env: Environment, *_):
+        self.environment = env
         plans = prioritized_plans(self.environment, self.planning_problem_parameters, **self.kwargs)
-        j = 0
-        ret = []
-        logging.info(f"state: {self.environment.state}")
-        for i, s in enumerate(self.environment.state):
-            if s is not None:
-                ret.append(plans[j] + [None])
-                j += 1
-            else:
-                ret.append([None])
-        ret = zip_longest(*ret, fillvalue=None)
-        self.history.append({"solution": plans})
-        return list(ret)
+        return Plans(plans)
 
 
 class CBSPlanner(Planner):
@@ -1133,21 +1214,10 @@ class CBSPlanner(Planner):
         self.cbs = CBS(self.environment, **self.kwargs)
         self.history = []
 
-    def create_plan(self, *_):
-        if self.replan_required:
-            self.cbs.update_state(self.environment.state)
+    def create_plan(self, env: Environment, *_):
+        self.cbs.update_state(env.state)
         self.cbs.run()
-        plans = list(self.cbs.best.solution)
-        ret = []
-        logging.info(f"state: {self.environment.state}")
-        for i, s in enumerate(self.environment.state):
-            if s is not None:
-                ret.append(plans[i] + [None])
-            else:
-                ret.append([None])
-        ret = zip_longest(*ret, fillvalue=None)
-        self.history.append({"solution": plans})
-        return list(ret)
+        return Plans(self.cbs.best.solution)
 
 
 class BeliefState:
@@ -1614,15 +1684,12 @@ class PriorityAgentPlanner(Planner):
             for i, sg in enumerate(self.environment.get_state_goal_tuples())
         ]
     
-    def create_plan(self, *_) -> list[list[int | None]]:
+    def create_plan(self, *_) -> Plans:
         self.update_state(self.environment.state)
         self.planning_loop()
         # post-process plans to right format:
         plans = [agent.get_plan() for agent in self.agents]
-        plans = [p + [None] for p in plans]
-        ret = zip_longest(*plans, fillvalue=None)
-        self.history.append({"solution": plans})
-        return list(ret)
+        return Plans(plans)
 
     def update_state(self, state):
         for i, a in enumerate(self.agents):
@@ -1720,7 +1787,7 @@ class CCRv2(Planner):
         for i, a in enumerate(self.agents):
             a.update_state(state[i])
                 
-    def create_plan(self, *_) -> list[list[int | None]]:
+    def create_plan(self, *_) -> Plans:
         """Create a plan for all agents
         
         :return: list of plans for all agents
@@ -1728,10 +1795,8 @@ class CCRv2(Planner):
         self.update_state(self.environment.state)
         self.planning_loop()
         # post-process plans to right format:
-        plans = [agent.get_plan() + [None] for agent in self.agents]
-        ret = zip_longest(*plans, fillvalue=None)
-        self.history.append({"solution": plans})
-        return list(ret)
+        plans = [agent.get_plan() for agent in self.agents]
+        return Plans(plans)
 
 
 if __name__ == "__main__":

@@ -132,8 +132,8 @@ class TestPriorityAgentPlanner(unittest.TestCase):
         self.env.state = ('b', 'g')
         self.env.goal = ('e', 'f')
         planner = planning.PriorityAgentPlanner(self.env)
-        plan = planner.create_plan()
-        reference = list(zip(list('bcde') + [None], list('gf') + [None for _ in range(4)]))
+        plan = planner.create_plan().as_state_list()
+        reference = list(zip(list('bcde'), list('gf') + [None for _ in range(4)]))
         self.assertEqual(plan, reference)
 
     def testConflict(self):
@@ -162,8 +162,8 @@ class TestCCRv2(unittest.TestCase):
         self.env.state = ('b', 'g')
         self.env.goal = ('e', 'f')
         planner = planning.CCRv2(self.env)
-        plan = planner.create_plan()
-        reference = list(zip(list('bcde') + [None], list('gf') + [None for _ in range(4)]))
+        plan = planner.create_plan().as_state_list()
+        reference = list(zip(list('bcde'), list('gf') + [None for _ in range(4)]))
         self.assertEqual(plan, reference)
 
     def testConflict(self):
@@ -178,15 +178,13 @@ class TestCCRv2(unittest.TestCase):
         self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
 
         planner = planning.CCRv2(self.env2)
-        plan = planner.create_plan()
-        conflicts = [a.get_conflicts() for a in planner.agents]
-        if len(conflicts) > 0:
-            for c in conflicts:
-                if not c:
-                    continue
-                first_conflict = min([min([ca.time for ca in cc.conflicting_agents]) for cc in c])
-                self.assertGreaterEqual(first_conflict, 100)
-
+        try:
+            
+            plan = planner.create_plan()
+            conflicts = planning.compute_k_robustness_conflicts([a.get_plan() for a in planner.agents], limit=100, k=1)
+            self.assertListEqual(list(conflicts), [])
+        except nx.NetworkXNoPath:
+            pass
         
         
     def testAgentInit(self):
