@@ -15,6 +15,7 @@ import copy
 from polygonal_roadmaps.environment import Environment
 import logging
 
+
 @dataclass(eq=True, init=True)
 class Plans():
     plans: list[list[int]]
@@ -41,25 +42,13 @@ class Plans():
             
         return cls(plans)
 
-    def is_valid(self, env: Environment|None = None, k:int=1, limit:int=None):
-        """ check if the plan is valid
-            - check if there are conflicts within the plan
-            - check if the plan is valid with in the given environment
-            - if no environment is passed, only the conflicts are checked
-            - if an environmnet is passed, k and limit are overwritten by the environment's parameters
-        """
-        # check if there are conflicts within the plan:
+    def contains_conflicts(self, env:Environment|None=None, limit: Union[int, None] = None, k: int = 1) -> bool:
         if env is not None:
-            k = env.planning_problem_parameters.conflict_horizon
-            limit = env.planning_problem_parameters.time_limit
-        conflicts = compute_all_k_conflicts(self, limit=limit, k=k)
-        if len(conflicts):
-            logging.info(f'conflicts: {conflicts}')
-            return False
-        
-        # check if all edges are valid within the environment
-        if env is None:
-            return True
+            k = env.planning_problem_parameters.k_robustness
+            limit = env.planning_problem_parameters.conflict_horizon
+        return len(compute_all_k_conflicts(self, limit=limit, k=k)) > 0
+    
+    def transitions_are_valid(self, env) -> bool:
         for _, path in enumerate(self):
             for n1, n2 in zip(path[:-1], path[1:]):
                 if n1 is None or n2 is None:
@@ -70,6 +59,22 @@ class Plans():
                     logging.info(f'no edge between {n1} and {n2}')
                     return False
         return True
+
+    def is_valid(self, env: Environment|None = None, k:int=1, limit:int=None):
+        """ check if the plan is valid
+            - check if there are conflicts within the plan
+            - check if the plan is valid with in the given environment
+            - if no environment is passed, only the conflicts are checked
+            - if an environmnet is passed, k and limit are overwritten by the environment's parameters
+        """
+        # check if there are conflicts within the plan:
+        if self.contains_conflicts(env, limit=limit, k=k):
+            return False
+        
+        # check if all edges are valid within the environment
+        if env is None:
+            return True
+        return self.transitions_are_valid(env)
     
     def get_state(self, t):
         sl = self.as_state_list()
@@ -81,6 +86,7 @@ class Plans():
 
     def get_next_state(self):
         return self.get_state(1)
+
 
 class Planner(ABC):
     environment: Environment
@@ -1343,9 +1349,7 @@ class CCRAgent:
         except nx.NetworkXNoPath:
             return [self.state], np.inf
 
-
     def get_plan(self) -> list[int]:
-        self.compute_plan()
         return self.plan
     
     def _get_conflicts(self, path):
@@ -1593,18 +1597,20 @@ class PriorityAgent:
         for agent, path in self.other_paths.items():
             if agent not in self.priorities:
                 self.priorities[agent] = 0
+            # do not wait for other agents with lower priority
             if self.priorities[agent] < self.priorities[self.index]:
                 continue
             horizon = self.planning_problem_parameters.conflict_horizon
             if horizon is None:
                 horizon = len(path)
-            for i, node in enumerate(path[1:horizon+2]):
+            for i, node in enumerate(path[:horizon]):
                 # we need to check, that there is no other edge with more priority used for this node
+                # if i==0, this causes a negative time in the constraint --- however, we do not plan for this so the constraint is not used
+                nc.add((node, i-1))
                 nc.add((node, i))
                 nc.add((node, i+1))
-                nc.add((node, i+2))
                     
-        # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
+        # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved from the other side
         for t in range(1, 1+self.block_steps):
             nc |= set((p[0], t) for p in self.other_paths.values())
         try:
@@ -1620,6 +1626,7 @@ class PriorityAgent:
     def _get_conflicts(self, path):
         conflicts = compute_all_k_conflicts([self.plan, path], limit=self.planning_problem_parameters.conflict_horizon, k=self.planning_problem_parameters.k_robustness)
         self.conflicts = frozenset().union(conflicts, self.conflicts)
+        return conflicts
 
     def get_conflicts(self):
         self.conflicts = frozenset()
@@ -1705,7 +1712,7 @@ class PriorityAgentPlanner(Planner):
                 return
     
     def update_all_paths(self):
-        self.plans = {a.index: a.get_plan() for a in self.agents}
+        self.plans = {a.index: a.plan for a in self.agents}
         for a in self.agents:
             a.update_other_paths(self.plans)
     
@@ -1770,7 +1777,6 @@ class CCRv2(Planner):
             #if not self.make_cdm_decision():
             #    return
             self.make_cdm_decision()
-            
         raise nx.NetworkXNoPath()
 
     def update_all_paths(self):

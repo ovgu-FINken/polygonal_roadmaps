@@ -146,9 +146,27 @@ class TestPriorityAgentPlanner(unittest.TestCase):
         plan = planner.create_plan()
         self.assertEqual(len(planner.agents[0].get_conflicts()), 0)
         self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
+        self.assertListEqual(planner.agents[0].plan, plan[0])
+        self.assertListEqual(planner.agents[0].other_paths[1], plan[1])
+        self.assertListEqual(planner.agents[1].plan, plan[1])
+        self.assertListEqual(planner.agents[1].other_paths[0], plan[0])
+        self.assertFalse(plan.contains_conflicts(env=self.env), msg=f"plan is not valid: {plan}")
+        self.assertTrue(plan.transitions_are_valid(env=self.env), msg=f"plan is not valid: {plan}")
 
         planner = planning.PriorityAgentPlanner(self.env2)
         plan = planner.create_plan()
+        self.assertEqual(len(planner.agents[0].get_conflicts()), 0)
+        self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
+        self.assertTrue(plan.is_valid(env=self.env2), msg=f"plan is not valid: {plan}")
+    
+    def testOtherPlanUpdate(self):
+        self.env.state = ('a', 'e')
+        planner = planning.PriorityAgentPlanner(self.env)
+        plan = planner.create_plan()
+        planner.agents[0].update_other_paths({1: list('edcba')})
+        self.assertListEqual(planner.agents[0].other_paths[1], list('edcba'))
+        planner.agents[0].plan = list('abcde')
+        self.assertGreaterEqual(len(planner.agents[0].get_conflicts()), 0)
         
 
 
@@ -176,6 +194,7 @@ class TestCCRv2(unittest.TestCase):
         plan = planner.create_plan()
         self.assertEqual(len(planner.agents[0].get_conflicts()), 0)
         self.assertEqual(len(planner.agents[1].get_conflicts()), 0)
+        self.assertTrue(plan.is_valid(env=self.env), msg=f"plan is not valid: {plan}")
 
         planner = planning.CCRv2(self.env2)
         try:
@@ -183,6 +202,7 @@ class TestCCRv2(unittest.TestCase):
             plan = planner.create_plan()
             conflicts = planning.compute_k_robustness_conflicts([a.get_plan() for a in planner.agents], limit=100, k=1)
             self.assertListEqual(list(conflicts), [])
+            self.assertTrue(plan.is_valid(env=self.env2), msg=f"plan is not valid: {plan}")
         except nx.NetworkXNoPath:
             pass
         

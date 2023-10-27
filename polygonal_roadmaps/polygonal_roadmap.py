@@ -12,6 +12,7 @@ from icecream import ic
 import logging
 
 import pandas as pd
+from random import shuffle
 
 def replace_goal_with_none(state, goal):
     return tuple([None if s == g else s for s, g in zip(state, goal)])
@@ -34,6 +35,18 @@ def next_state_is_valid(next_state, env):
     
     return True
 
+def advance_state_randomly(state, next_state, step_num):
+    if step_num >= len(state):
+        return next_state
+    bitmask = [True] * step_num + [False] * (len(state) - step_num)
+    bitmask = shuffle(bitmask)
+    ret = []
+    for s, ns, b in zip(state, next_state, b):
+        if b:
+            ret.append(ns)
+        else:
+            ret.append(s)
+    return ret
 
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 1000) -> None:
@@ -45,11 +58,16 @@ class Executor():
         self.time_frame = time_frame
         self.profile = Profile()
 
-    def run(self, profiling=False, replan=None):
+    def run(self, profiling=False, replan=None, step_num:int|None=None):
         if replan is not None:
             self.replan = replan
         else:
             self.replan = self.planner.replan_required
+        if step_num is None:
+            step_num = len(self.env.state) 
+        self.step_num = step_num
+        if step_num < len(self.env.state):
+            self.replan = True
         self.failed = True
         if len(self.history) >= self.time_frame:
             return
@@ -84,7 +102,7 @@ class Executor():
         logging.info(f"plan: {plan}")
         self.history.append(self.env.state)
         self.plans.append(plan)
-        state = plan.get_next_state()
+        state = advance_state_randomly(self.env.state, plan.get_next_state(), self.step_num)
         assert next_state_is_valid(state, self.env), f"transition{self.env.state} -> {state} is not valid"
         self.env.state = replace_goal_with_none(state, self.env.goal)
         return self.env.state
