@@ -11,6 +11,7 @@ from functools import partial
 from typing import Union
 from abc import ABC, abstractmethod
 import copy
+import random
 
 from polygonal_roadmaps.environment import Environment
 import logging
@@ -1759,7 +1760,7 @@ class CCRv2(Planner):
             nodes |= a.get_cdm_node()
         if not len(nodes):
             return None
-        return np.random.choice(list(nodes))
+        return random.choice(list(nodes))
     
     def planning_loop(self):
         for _ in range(self.max_iter):

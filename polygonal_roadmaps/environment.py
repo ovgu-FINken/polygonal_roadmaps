@@ -19,6 +19,7 @@ class PlanningProblemParameters:
     weight_name: str = "dist"
     wait_action_cost: float = 1.0001
     pad_path: bool = False
+    step_num: int | None = None
 
 
 def remove_edge_if_exists(g: nx.Graph, u, v) -> None:

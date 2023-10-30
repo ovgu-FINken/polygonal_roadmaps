@@ -35,13 +35,20 @@ def next_state_is_valid(next_state, env):
     
     return True
 
-def advance_state_randomly(state, next_state, step_num):
+def advance_state_randomly(env, next_state):
+    if not env.planning_problem_parameters.step_num:
+        return next_state
+    step_num = env.planning_problem_parameters.step_num
+    state = env.state
     if step_num >= len(state):
         return next_state
+    # the bitmask wil be [True, True, True .... False, False, False]
     bitmask = [True] * step_num + [False] * (len(state) - step_num)
-    bitmask = shuffle(bitmask)
+    
+    # we randomize the oreder of the bitmask
+    shuffle(bitmask)
     ret = []
-    for s, ns, b in zip(state, next_state, b):
+    for s, ns, b in zip(state, next_state, bitmask):
         if b:
             ret.append(ns)
         else:
@@ -58,16 +65,14 @@ class Executor():
         self.time_frame = time_frame
         self.profile = Profile()
 
-    def run(self, profiling=False, replan=None, step_num:int|None=None):
+    def run(self, profiling=False, replan=None):
         if replan is not None:
             self.replan = replan
         else:
             self.replan = self.planner.replan_required
-        if step_num is None:
-            step_num = len(self.env.state) 
-        self.step_num = step_num
-        if step_num < len(self.env.state):
-            self.replan = True
+        if self.env.planning_problem_parameters.step_num: 
+            if self.env.planning_problem_parameters.step_num < len(self.env.state):
+                self.replan = True
         self.failed = True
         if len(self.history) >= self.time_frame:
             return
@@ -102,7 +107,7 @@ class Executor():
         logging.info(f"plan: {plan}")
         self.history.append(self.env.state)
         self.plans.append(plan)
-        state = advance_state_randomly(self.env.state, plan.get_next_state(), self.step_num)
+        state = advance_state_randomly(self.env, plan.get_next_state())
         assert next_state_is_valid(state, self.env), f"transition{self.env.state} -> {state} is not valid"
         self.env.state = replace_goal_with_none(state, self.env.goal)
         return self.env.state
@@ -149,7 +154,7 @@ class Executor():
         result = {}
         result["steps"] = len(self.history)
         result["flowtime"] = sum([len(x) for x in self.history]) / len(self.env.state)
-        result["makespan"] = max([ sum_of_cost([solution[i]]) for i, _ in enumerate(self.env.goal)])
+        #result["makespan"] = max([ sum_of_cost([solution[i]]) for i, _ in enumerate(self.env.goal)])
         result["sum_of_cost"] = sum_of_cost(solution, graph=self.env.g)
         result["failed"] = self.failed
         #result["robustness"] = compute_solution_robustness(solution)

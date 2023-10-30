@@ -3,3 +3,4 @@ k_robustness: 1
 weight_name: "dist"
 wait_action_cost: 1.0001
 pad_path: False
+step_num: 0
