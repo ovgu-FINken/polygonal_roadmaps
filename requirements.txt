@@ -11,3 +11,4 @@ snakeviz>=2.1.0
 pytest>=6.2.5
 pytest-cov
 pytest-subtests
+geopandas
