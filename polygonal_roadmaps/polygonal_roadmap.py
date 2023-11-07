@@ -20,6 +20,9 @@ def replace_goal_with_none(state, goal):
 def next_state_is_valid(next_state, env):
     if len(next_state) != len(env.state):
         return False
+    # we shoud not get a plan without any progress though this is technically possible
+    if next_state == env.state:
+        return False
     for s, ns in zip(env.state, next_state):
         if s is None:
             continue
@@ -36,6 +39,7 @@ def next_state_is_valid(next_state, env):
     return True
 
 def advance_state_randomly(env, next_state):
+    assert next_state_is_valid(next_state, env), f"transition{env.state} -> {next_state} is not valid"
     if not env.planning_problem_parameters.step_num:
         return next_state
     step_num = env.planning_problem_parameters.step_num
@@ -53,6 +57,11 @@ def advance_state_randomly(env, next_state):
             ret.append(ns)
         else:
             ret.append(s)
+
+    # retry if we did not make any progress, i.e. the state we progress is a wait action
+    # replanning should remove wait actions by the state change
+    if ret == state:
+        return advance_state_randomly(env, next_state)
     return ret
 
 class Executor():
@@ -63,7 +72,6 @@ class Executor():
         self.history = []
         self.plans = []
         self.time_frame = time_frame
-        self.profile = Profile()
 
     def run(self, profiling=False, replan=None):
         if replan is not None:
@@ -77,6 +85,7 @@ class Executor():
         if len(self.history) >= self.time_frame:
             return
         if profiling:
+            self.profile = Profile()
             self.profile.enable()
         try:
             plan = self.planner.create_plan(self.env)
@@ -88,8 +97,10 @@ class Executor():
                 # (goal is reached)
                 if all(s is None for s in self.env.state):
                     # plan = plan[1:]
-                    self.profile.disable()
-                    self.failed = False
+                    if profiling:
+                        self.profile.disable()
+                    if Plans(self.history).is_valid(self.env):
+                        self.failed = False
                     return self.history
                 if self.replan:
                     # create new plan on updated state
@@ -129,9 +140,6 @@ class Executor():
                 if position is not None:
                     records[-1]['x'] = position[0]
                     records[-1]['y'] = position[1]
-                if False:
-                    plan = [p[i] for p in self.plans[t].plans]
-                    records[-1]['plan'] = plan
         return pd.DataFrame(records)
 
     def get_history_as_solution(self):

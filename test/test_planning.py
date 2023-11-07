@@ -2,10 +2,15 @@
 import os
 import sys
 
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from polygonal_roadmaps import cli
+from polygonal_roadmaps.environment import GraphEnvironment, PlanningProblemParameters, gen_example_graph
 import unittest
 from hypothesis import given, strategies as st
+import networkx as nx
+from icecream import ic
 
 from polygonal_roadmaps.planning import *
 
@@ -38,3 +43,41 @@ class TestPlans(unittest.TestCase):
         self.assertEqual(Plans([[1,2,3]]).get_next_state(), (2,))
         self.assertEqual(Plans([[1,2,3], [4], [5]]).get_next_state(), (2, None, None))
         
+
+class TestPlanners(unittest.TestCase):
+    def setUp(self):
+        # simple graph, working
+        self.env = GraphEnvironment(graph=gen_example_graph(5, 2), start=('b', 'g'), goal=('e', 'a'), planning_problem_parameters=PlanningProblemParameters(conflict_horizon=100))
+        # more complex graph from swarmlab map
+        self.env2 = cli.env_generator('DrivingSwarm;icra2021_map.yaml;icra2021.yml', n_agents= 3)[0]
+        self.env2.planning_problem_parameters = PlanningProblemParameters(conflict_horizon=100)
+        # simple graph, not working (no path from start to goal for both agents without a conflict)
+        self.env3 = GraphEnvironment(graph=gen_example_graph(5, 1), start=('a', 'e'), goal=('e', 'a'), planning_problem_parameters=PlanningProblemParameters(conflict_horizon=100))
+  
+    def check_env(self, Planner, env, **kwargs):
+        planner = Planner(env, **kwargs)
+        plan = planner.create_plan(env)
+        self.assertTrue(plan.is_valid(env))
+
+    def check_env_invalid(self, Planner, env, **kwargs):
+        planner = Planner(env, **kwargs)
+        with self.assertRaises(nx.NetworkXNoPath):
+            plan = planner.create_plan(env)
+            ic(Plans(plan).is_valid(env))
+
+    def check_planner(self, Planner, **kwargs):
+        self.check_env(Planner, self.env, **kwargs)
+        self.check_env(Planner, self.env2, **kwargs)
+        self.check_env_invalid(Planner, self.env3, **kwargs)
+    
+    def test_CCRv2(self):
+        self.check_planner(CCRv2)
+
+    def test_CBS(self):
+        self.check_planner(CBSPlanner)
+
+    def test_PrioSame(self):
+        self.check_planner(PriorityAgentPlanner, priority_method='same')
+
+    def test_PrioIndex(self):
+        self.check_planner(PriorityAgentPlanner, priority_method='index')

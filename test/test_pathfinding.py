@@ -137,6 +137,9 @@ class TestPriorityAgentPlanner(unittest.TestCase):
         self.assertEqual(plan, reference)
 
     def testConflict(self):
+        """
+        Test method to check if there are any conflicts in the plan created by the PriorityAgentPlanner.
+        """
         self.env.state = ('a', 'e')
         planner = planning.PriorityAgentPlanner(self.env)
 
@@ -253,9 +256,10 @@ class TestCCRv2(unittest.TestCase):
         planner.agents[0].compute_plan()
         self.assertListEqual(planner.agents[0].plan, list('bcde'))
 
-        # change the state to b
+        # change the state to a
         planner.agents[0].update_state('a')
         self.assertEqual(planner.agents[0].state, 'a')
+        planner.agents[0].compute_plan()
         self.assertListEqual(planner.agents[0].plan, list('abcde'))
         
     def testCDMUpdate(self):

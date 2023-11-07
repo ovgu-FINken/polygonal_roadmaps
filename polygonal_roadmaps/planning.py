@@ -10,6 +10,7 @@ from itertools import count, zip_longest
 from functools import partial
 from typing import Union
 from abc import ABC, abstractmethod
+from functools import lru_cache
 import copy
 import random
 
@@ -60,6 +61,12 @@ class Plans():
                     logging.info(f'no edge between {n1} and {n2}')
                     return False
         return True
+    
+    def end_in_goals(self, env: Environment) -> bool:
+        for i, plan in enumerate(self.plans):
+            if plan[-1] != env.goal[i]:
+                return False
+        return True
 
     def is_valid(self, env: Environment|None = None, k:int=1, limit:int=None):
         """ check if the plan is valid
@@ -75,7 +82,8 @@ class Plans():
         # check if all edges are valid within the environment
         if env is None:
             return True
-        return self.transitions_are_valid(env)
+        
+        return self.transitions_are_valid(env) and self.end_in_goals(env)
     
     def get_state(self, t):
         sl = self.as_state_list()
@@ -283,6 +291,11 @@ def temporal_node_list(G, limit, node_constraints):
 def spatial_path_and_cost(G, source, target, weight):
     spatial_path = nx.shortest_path(G, source, target, weight)
     return spatial_path, sum_of_cost([spatial_path], G, weight)
+
+
+@lru_cache(maxsize=None)
+def cached_shortest_path(G, source, target, weight):
+    return nx.shortest_path(G, source, target, weight)
 
 def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, wait_action_cost=.00001, belief=None, predecessors=None, node_contraints=None, preferred_nodes=None, inertia=0.2) -> tuple[list, float]:
                                        
@@ -1317,14 +1330,14 @@ class CCRAgent:
             return
         self.state_changed = True
         self.state = state
-        self.compute_plan()
+        # self.compute_plan()
         
     def update_goal(self, goal):
         if goal == self.goal:
             return
         self.goal_changed = True
         self.goal = goal
-        self.compute_plan()
+        # self.compute_plan()
 
     def get_path(self, source, goal):
         pred = {}
@@ -1338,17 +1351,14 @@ class CCRAgent:
                     # get priority of this and the new one
                     if node not in self.belief:
                         continue
-                    if pred[node, i+1] > self.belief[node].priorities[path[i]]:
+                    if self.belief[node].priorities[pred[node, i+1]] > self.belief[node].priorities[path[i]]:
                         continue
                 pred[node, i+1] = path[i]
         # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved
         nc = set()
         for t in range(1, 1+self.block_steps):
             nc |= set((p[0], t) for p in self.other_paths.values())
-        try:
-            return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
-        except nx.NetworkXNoPath:
-            return [self.state], np.inf
+        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
 
     def get_plan(self) -> list[int]:
         return self.plan
@@ -1583,7 +1593,7 @@ class PriorityAgent:
             return
         self.state_changed = True
         self.state = state
-        self.compute_plan()
+        #self.compute_plan()
         
     def update_goal(self, goal):
         if goal == self.goal:
@@ -1614,14 +1624,10 @@ class PriorityAgent:
         # we are not allowed to go to the position of another robot at and t=1, because this will be a conflict that is not possible to be resolved from the other side
         for t in range(1, 1+self.block_steps):
             nc |= set((p[0], t) for p in self.other_paths.values())
-        try:
-            return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=None, predecessors=set(), node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
-        except nx.NetworkXNoPath:
-            return [self.state], np.inf
-
+        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=None, predecessors=set(), node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
 
     def get_plan(self) -> list[int]:
-        self.compute_plan()
+        #self.compute_plan()
         return self.plan
     
     def _get_conflicts(self, path):
@@ -1719,7 +1725,8 @@ class PriorityAgentPlanner(Planner):
     
     def make_all_plans_consistent(self):
         self.update_all_paths()
-        for a in self.agents:
+        # sort agents by priority to plan for highest prio first (saves tonnes of planning effort)
+        for a in sorted(self.agents, key=lambda x: x.priorities[x.index], reverse=True):
             # this will change plans
             a.make_plan_consistent()
             self.update_all_paths()
