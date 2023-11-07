@@ -12,3 +12,5 @@ pytest>=6.2.5
 pytest-cov
 pytest-subtests
 geopandas
+icecream
+hypothesis
