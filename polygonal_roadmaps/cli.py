@@ -242,9 +242,9 @@ def run_one(planner, result_path=None, config=None):
         resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
         _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
         resource.setrlimit(resource.RLIMIT_CPU, (hardlimit, hardlimit))
-        ex.profile.disable()
+        #ex.profile.disable()
     except Exception as e:
-        ex.profile.disable()
+        #ex.profile.disable()
         logging.warning(f'Exception occured during execution:\n{e}')
         raise e
     finally:
