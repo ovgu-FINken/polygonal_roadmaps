@@ -220,7 +220,7 @@ def save_run_data(run_data:dict, run_history:pd.DataFrame, result_path:Path):
 
 def load_run_data(result_path:Path):
     with open(result_path / "result.yml", mode="rb") as results:
-        run_data = yaml.load(results)
+        run_data = yaml.safe_load(results)
     run_history = pd.read_feather(result_path / "history.feather")
     return run_data, run_history
 
