@@ -14,3 +14,4 @@ pytest-subtests
 geopandas
 icecream
 hypothesis
+pyarrow
