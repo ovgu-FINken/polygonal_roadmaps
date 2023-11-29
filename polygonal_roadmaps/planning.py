@@ -310,6 +310,7 @@ def spacetime_astar_ccr(G, source, target, spacetime_heuristic=None, limit=100, 
                                        
     def true_cost_heuristic(u):
         return nx.shortest_path_length(G, source=u, target=target, weight="weight")
+
     if spacetime_heuristic is None:
         spacetime_heuristic = true_cost_heuristic
     if preferred_nodes is None:
@@ -1358,7 +1359,11 @@ class CCRAgent:
         nc = set()
         for t in range(1, 1+self.block_steps):
             nc |= set((p[0], t) for p in self.other_paths.values())
-        return spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
+        solution, cost = spacetime_astar_ccr(self.g, source, goal, limit=self.limit, belief=self.belief, predecessors=pred, node_contraints=nc, preferred_nodes=preferred_nodes, inertia=self.inertia)
+        assert len(solution) > 0
+        assert solution[0] == source
+        assert solution[-1] == goal
+        return solution, cost
 
     def get_plan(self) -> list[int]:
         return self.plan

@@ -25,7 +25,7 @@ def next_state_is_valid(next_state, env):
         return False
     for s, ns in zip(env.state, next_state):
         if s is None:
-            continue
+            assert ns is None
         if ns is None:
             continue
         if ns == s:
@@ -109,6 +109,7 @@ class Executor():
                     plan = Plans([p[1:] for p in plan])
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
+            self.failed = True
         if profiling:
             self.profile.disable()
         logging.info("Planning complete")
