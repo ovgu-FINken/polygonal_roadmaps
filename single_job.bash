@@ -8,10 +8,12 @@
 # Redirect output and error output
 #SBATCH --output="logs/slurm.out"
 #SBATCH --error="logs/slurm.err"
-$SCENARIO=$1
-$N_AGENTS=$2
-$PLANNER=$3
+SCENARIO=$1
+N_AGENTS=$2
+PLANNER=$3
 
+source /opt/spack/main/env.sh
+module load python
 source bin/activate
 srun python -m polygonal_roadmaps -n_agents $N_AGENTS -index $SLURM_ARRAY_TASK_ID \
     -logfile "logs/$PLANNER$SCENARIO/$SLURM_ARRAY_TASK_ID.log" -loglevel warning -memlimit 2 -timelimit 5 \
