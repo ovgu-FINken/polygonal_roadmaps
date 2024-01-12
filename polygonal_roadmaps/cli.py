@@ -215,7 +215,7 @@ def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_probl
 def save_run_data(run_data:dict, run_history:pd.DataFrame, result_path:Path):
     with open(result_path / "result.yml", mode="w") as results:
         yaml.dump(run_data, results)
-    run_history.to_feather(result_path / "history.feather")
+    run_history.reset_index().to_feather(result_path / "history.feather")
     
 
 def load_run_data(result_path:Path):
@@ -261,8 +261,9 @@ def aggregate_results(result_path):
         with open(result_file) as stream:
             record = yaml.safe_load(stream)
             record['history'] = Path(result_file).parent / "history.feather"
-            data.append(record)
-    return pd.json_normalize(data)
+            
+            data.append(pd.json_normalize(record))
+    return pd.concat(data)
 
 def cli_main() -> None:
     parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
