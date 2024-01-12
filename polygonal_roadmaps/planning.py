@@ -58,13 +58,25 @@ class Plans():
                 if n1 == n2:
                     continue
                 if not env.g.has_edge(n1, n2):
-                    logging.info(f'no edge between {n1} and {n2}')
+                    logging.warn(f'plan contains edge between {n1} and {n2}, which is not part of the graph')
                     return False
         return True
     
     def end_in_goals(self, env: Environment) -> bool:
         for i, plan in enumerate(self.plans):
+            if env.state[i] is None:
+                continue
             if plan[-1] != env.goal[i]:
+                logging.warn(f"plan {i}: {plan} does not end in goal {env.goal[i]}")
+                return False
+        return True
+    
+    def start_in_start(self, env: Environment) -> bool:
+        for i, plan in enumerate(self.plans):
+            if env.state[i] is None:
+                continue
+            if plan[0] != env.state[i]:
+                logging.warn(f"plan {i}: {plan} does not start in start {env.state[i]}")
                 return False
         return True
 
@@ -77,13 +89,14 @@ class Plans():
         """
         # check if there are conflicts within the plan:
         if self.contains_conflicts(env, limit=limit, k=k):
+            logging.warn("plan contains conflicts")
             return False
         
         # check if all edges are valid within the environment
         if env is None:
             return True
         
-        return self.transitions_are_valid(env) and self.end_in_goals(env)
+        return self.transitions_are_valid(env) and self.end_in_goals(env) and self.start_in_start(env)
     
     def get_state(self, t):
         sl = self.as_state_list()
@@ -1340,7 +1353,9 @@ class CCRAgent:
         self.goal = goal
         # self.compute_plan()
 
-    def get_path(self, source, goal):
+    def get_path(self, source, goal) -> tuple[list, float]:
+        if source is None:
+            return [None], np.inf
         pred = {}
         preferred_nodes = set(self.plan)
         for path in self.other_paths.values():
@@ -1379,8 +1394,6 @@ class CCRAgent:
         return self.conflicts
     
     def replan_needed(self):
-        if self.state is None:
-            return False
         if self.goal is None:
             return False
         if self.plan is None:
@@ -1554,7 +1567,7 @@ class PriorityAgent:
         self.g = graph.copy()
         for node in self.g.nodes():
             self.g.add_edge(node, node, weight=planning_problem_parameters.wait_action_cost)
-        self.state = state
+        self._state = state
         self.goal = goal
         self.planning_problem_parameters = planning_problem_parameters
         self.other_paths: dict[int, list] = {}
@@ -1594,10 +1607,10 @@ class PriorityAgent:
         return True
         
     def update_state(self, state):
-        if state == self.state:
+        if state == self._state:
             return
         self.state_changed = True
-        self.state = state
+        self._state = state
         #self.compute_plan()
         
     def update_goal(self, goal):
@@ -1607,7 +1620,9 @@ class PriorityAgent:
         self.goal = goal
         self.compute_plan()
 
-    def get_path(self, source, goal):
+    def get_path(self, source, goal) -> tuple[list, float]:
+        if source is None:
+            return [None], np.inf
         preferred_nodes = set(self.plan)
         nc = set()
         for agent, path in self.other_paths.items():
@@ -1647,8 +1662,6 @@ class PriorityAgent:
         return self.conflicts
     
     def replan_needed(self):
-        if self.state is None:
-            return False
         if self.goal is None:
             return False
         if self.plan is None:
@@ -1663,8 +1676,11 @@ class PriorityAgent:
     
     def compute_plan(self):
         if not self.replan_needed():
+            return 
+        if self._state is None:
+            self.plan = [None]
             return
-        self.plan, self.cost = self.get_path(self.state, self.goal)
+        self.plan, self.cost = self.get_path(self._state, self.goal)
         self.state_changed = False
         self.goal_changed = False
         self.plans_changed = False

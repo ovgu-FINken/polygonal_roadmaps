@@ -25,7 +25,11 @@ def next_state_is_valid(next_state, env):
         return False
     for s, ns in zip(env.state, next_state):
         if s is None:
-            assert ns is None
+            if ns is not None:
+                logging.warn("next state is not valid, agent is not allowed to move from None to a position")
+                if ns in env.goal:
+                    logging.warn("next state is a goal position, likely the planner does not use the current state as start state")
+                return False
         if ns is None:
             continue
         if ns == s:
@@ -38,8 +42,8 @@ def next_state_is_valid(next_state, env):
     
     return True
 
-def advance_state_randomly(env, next_state):
-    assert next_state_is_valid(next_state, env), f"transition{env.state} -> {next_state} is not valid"
+def advance_state_randomly(env: Environment, next_state):
+    assert next_state_is_valid(next_state, env), f"transition{env.state} -> {next_state} is not valid, goal state is {env.goal}"
     if not env.planning_problem_parameters.step_num:
         return next_state
     step_num = env.planning_problem_parameters.step_num
@@ -99,8 +103,7 @@ class Executor():
                     # plan = plan[1:]
                     if profiling:
                         self.profile.disable()
-                    if Plans(self.history).is_valid(self.env):
-                        self.failed = False
+                    self.failed = not Plans(self.history).is_valid(self.env)
                     return self.history
                 if self.replan:
                     # create new plan on updated state
@@ -113,14 +116,16 @@ class Executor():
         if profiling:
             self.profile.disable()
         logging.info("Planning complete")
+        return self.history
 
-    def step(self, plan):
+    def step(self, plan: Plans):
         # advance agents
         logging.info(f"plan: {plan}")
+        assert plan.is_valid(self.env), f"plan {plan} is not valid"
         self.history.append(self.env.state)
         self.plans.append(plan)
         state = advance_state_randomly(self.env, plan.get_next_state())
-        assert next_state_is_valid(state, self.env), f"transition{self.env.state} -> {state} is not valid"
+        assert next_state_is_valid(state, self.env), f"transition{self.env.state} -> {state} is not valid, goal state is {self.env.goal}"
         self.env.state = replace_goal_with_none(state, self.env.goal)
         return self.env.state
 

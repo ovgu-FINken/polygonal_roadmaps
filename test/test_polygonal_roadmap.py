@@ -39,11 +39,11 @@ class TestPlanningExecution(unittest.TestCase):
         self.assertTrue(planning.check_nodes_connected(executor.env.g, paths), f"nodes are not connected in plan: {paths}")
 
     def testGraphEnvironment(self):
-        g = nx.Graph([(1, 2), (2, 3), (1, 3), (1, 4)])
-        env = GraphEnvironment(g, (1, 2), (2, 4))
+        g = nx.Graph([(1, 2), (2, 3), (3, 4), (1, 4), (4, 5)])
+        env = GraphEnvironment(g, (1, 2), (2, 5))
         self.assertTrue(isinstance(env, Environment))
 
-        planner = FixedPlanner(env, plan=[(1, 2), (2, 1), (2, 4)])
+        planner = FixedPlanner(env, plan=[(1, 2), (1, 3), (2, 4), (None, 5)])
 
         executor = polygonal_roadmap.Executor(env, planner)
         executor.replan = False
@@ -51,14 +51,13 @@ class TestPlanningExecution(unittest.TestCase):
         # we want to save state and plans at that state
         self.assertListEqual(executor.history, [])
         executor.run()
-        self.assertListEqual(executor.history, [(1, 2), (None, 1)])
-        executor.history = [(1, 2, 3), (1, 2, 3), (1, 2, 4), (1, 3, 4), (0, 3, 5)]
+        self.assertListEqual(executor.history, [(1, 2), (1, 3), (None, 4)])
 
     def testRoadmapEnvironment(self):
         env = self.envs[1]
         prioritized_planner = PriorityAgentPlanner(env, priority_method="index")
         executor = polygonal_roadmap.Executor(env, prioritized_planner, time_frame=50)
-        executor.run()
+        executor.run(replan=True)
         # logging.warn(f'executer history: {executor.history}')
         self.assertGreaterEqual(planning.compute_solution_robustness(executor.get_history_as_solution()),
                                 1,
