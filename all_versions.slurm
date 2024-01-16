@@ -3,7 +3,7 @@
 # Time limit is ten minutes (see "man sbatch")
 source bin/activate
 
-export SCENARIO="DrivingSwarm;icra2024.yaml;icra2024_1m.yml"
+export SCENARIO="DrivingSwarm;icra2024.yaml;icra2024.yml"
 for PLANNER in $(ls benchmark/planner_config)
 do
 	sleep 1
@@ -11,7 +11,8 @@ do
 	sbatch -J "$PLANNER$MAP" --array 1-31 single_job.bash $SCENARIO 5 $PLANNER
 done
 
-export SCENARIO="DrivingSwarm;icra2024.yaml;icra2024.yml"
+sleep 5
+export SCENARIO="DrivingSwarm;icra2024.yaml;icra2024_1m.yml"
 for PLANNER in $(ls benchmark/planner_config)
 do
 	sleep 1
