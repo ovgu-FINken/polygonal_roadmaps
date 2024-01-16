@@ -92,7 +92,8 @@ def raise_timeout(number, _):
 
 
 def run_all(args):
-    print("running")
+    print("\n\nrunning set of experiments (run_all)")
+    print("====================================")
     # run all jobs specified by args
 
     # set signal handelrs for sigterm, sigxcpu
@@ -161,7 +162,6 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
             print("create results directory")
             path.mkdir(parents=True, exist_ok=True)
             planner_config.update({'scen': scen_str, "index": index+run, "xindex": i, "planner_file": planner_config_file})
-            print("run")
             data.append(run_one(planner, result_path=path, config=planner_config))
     return data
 
@@ -213,6 +213,7 @@ def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_probl
     
 
 def save_run_data(run_data:dict, run_history:pd.DataFrame, result_path:Path):
+    logging.info(f"save run data to {result_path}, with {len(run_history)} steps")
     with open(result_path / "result.yml", mode="w") as results:
         yaml.dump(run_data, results)
     run_history.reset_index().to_feather(result_path / "history.feather")
@@ -226,18 +227,22 @@ def load_run_data(result_path:Path):
 
 
 def run_one(planner, result_path=None, config=None):
+    print("run one ---------------------------------")
     data = None
     ex = polygonal_roadmap.Executor(planner.environment, planner)
     ex.failed = True
     try:
-        print('-----------------')
         print(ex.env)
         if result_path is not None:
             print(f'{result_path}')
         ex.run()
-        ex.failed = False
+        #if planning.Plans(ex.get_history_as_solution()).is_valid(ex.env):
+        #    ex.failed = False
+        #else:
+        #    print("invalid plan as history")
+        print("running done")
     except (MemoryError, TimeoutError):
-        print("out of computational resources")
+        logging.info("out of computational resources")
         _, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
         resource.setrlimit(resource.RLIMIT_AS, (hardlimit, hardlimit))
         _, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
@@ -246,12 +251,13 @@ def run_one(planner, result_path=None, config=None):
     except Exception as e:
         #ex.profile.disable()
         logging.warning(f'Exception occured during execution:\n{e}')
-        raise e
+        #raise e
     finally:
         run_data = ex.run_results()
         run_history = ex.run_history()
         run_data["config"] = config
         save_run_data(run_data, run_history, result_path)
+        print("run done ---------------------------------")
     return data
 
 def aggregate_results(result_path):
@@ -266,6 +272,8 @@ def aggregate_results(result_path):
     return pd.concat(data)
 
 def cli_main() -> None:
+    import warnings
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
     parser = argparse.ArgumentParser(description="Runner for Pathfinding Experiments")
     parser.add_argument("-planner", type=str, nargs='+', required=True)
     parser.add_argument("-scenarios", type=str, nargs='+', required=True)

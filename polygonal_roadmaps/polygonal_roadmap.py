@@ -78,6 +78,7 @@ class Executor():
         self.time_frame = time_frame
 
     def run(self, profiling=False, replan=None):
+        print("executor run")
         if replan is not None:
             self.replan = replan
         else:
@@ -87,6 +88,7 @@ class Executor():
                 self.replan = True
         self.failed = True
         if len(self.history) >= self.time_frame:
+            logging.warn("return history as time frame is reached, should not happen for fresh run")
             return
         if profiling:
             self.profile = Profile()
@@ -94,6 +96,7 @@ class Executor():
         try:
             plan = self.planner.create_plan(self.env)
             if not plan:
+                logging.warn("no plan, return history")
                 return self.history
             for i in range(self.time_frame):
                 logging.info(f"At iteration {i} / {self.time_frame}")
@@ -103,7 +106,9 @@ class Executor():
                     # plan = plan[1:]
                     if profiling:
                         self.profile.disable()
-                    self.failed = not Plans(self.history).is_valid(self.env)
+                    self.failed = not Plans(self.get_history_as_solution()).is_valid(self.env)
+                    if self.failed:
+                        logging.warn(f"plans in history are not valid: {self.history}")
                     return self.history
                 if self.replan:
                     # create new plan on updated state
@@ -163,7 +168,7 @@ class Executor():
     
     def run_results(self):
         # return the aggregated results of a run, i.e. flowtime, makespan, etc. as well as the cost of the run
-        print("compile run results")
+        logging.info("compile run results")
         solution = self.get_history_as_solution()
         result = {}
         result["steps"] = len(self.history)
@@ -179,7 +184,8 @@ class Executor():
     def run_history(self):
         # return the history of a run, i.e. the state of the agents at each timestep, intermediate plans, etc.
         # everything needed to make a video or otherwise visualize the run
-        print("compile run history")
+        logging.info("compile run history")
+        logging.info(f"len history: {len(self.history)}")
         return self.get_history_as_dataframe()
 
 
