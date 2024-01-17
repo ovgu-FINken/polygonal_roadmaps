@@ -1,0 +1,14 @@
+astar: 0
+config:
+  index: 21
+  planner: PriorityAgentPlanner
+  planner_args:
+    priority_method: index
+  planner_file: PrioIndex.yml
+  scen: DrivingSwarm;icra2024.yaml;icra2024.yml
+  xindex: 0
+failed: true
+flowtime: 1000.0
+spacetime_astar: 0
+steps: 1000
+sum_of_cost: 2039

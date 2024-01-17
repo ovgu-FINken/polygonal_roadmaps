@@ -144,6 +144,8 @@ def create_planner_from_config(config, env) -> planning.Planner:
 
 
 def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:None|int=None, n_scenarios:int=25, problem_parameters:str|None=None, n_runs:int=1):
+    if problem_parameters is None:
+        problem_parameters = "default.yml"
     planner_file = Path("benchmark") / 'planner_config' / planner_config_file
     with open(planner_file) as stream:
         planner_config = yaml.safe_load(stream)
@@ -158,10 +160,10 @@ def run_scenario(scen_str:str, planner_config_file:str, n_agents:int=10, index:N
                 break
             print("setup")
             planner = create_planner_from_config(planner_config, env)
-            path = Path('results') / planner_config_file / scen_str / str(index + run)
+            path = Path('results') /  planner_config_file / scen_str / problem_parameters / str(index + run)
             print("create results directory")
             path.mkdir(parents=True, exist_ok=True)
-            planner_config.update({'scen': scen_str, "index": index+run, "xindex": i, "planner_file": planner_config_file})
+            planner_config.update({'scen': scen_str, "index": index+run, "xindex": i, "planner_file": planner_config_file, "problem_parameters": problem_parameters})
             data.append(run_one(planner, result_path=path, config=planner_config))
     return data
 

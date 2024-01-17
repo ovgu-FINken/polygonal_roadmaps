@@ -1,0 +1,13 @@
+astar: 0
+config:
+  index: 12
+  planner: CCRv2
+  planner_args: {}
+  planner_file: CCRv2.yml
+  scen: DrivingSwarm;icra2024.yaml;icra2024_1m.yml
+  xindex: 0
+failed: true
+flowtime: 0.0
+spacetime_astar: 0
+steps: 0
+sum_of_cost: .inf

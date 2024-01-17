@@ -1,0 +1,14 @@
+astar: 0
+config:
+  index: 5
+  planner: CBS
+  planner_args:
+    max_iter: 1000000
+  planner_file: CBS.yml
+  scen: DrivingSwarm;icra2024.yaml;icra2024_1m.yml
+  xindex: 0
+failed: false
+flowtime: 8.0
+spacetime_astar: 0
+steps: 8
+sum_of_cost: 29
