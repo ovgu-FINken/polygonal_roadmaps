@@ -15,7 +15,7 @@ PROBLEM_PARAMS=$4
 
 source /opt/spack/main/env.sh
 module load python
-source bin/activate
+source venv/bin/activate
 srun python -m polygonal_roadmaps -n_agents $N_AGENTS -index $SLURM_ARRAY_TASK_ID \
     -logfile "logs/$PLANNER$SCENARIO/$SLURM_ARRAY_TASK_ID.log" -loglevel warning -memlimit 5 -timelimit 30 \
     -planner $PLANNER -scenario $SCENARIO -problem_parameters $PROBLEM_PARAMS
