@@ -258,6 +258,7 @@ def run_one(planner, result_path=None, config=None):
         run_data = ex.run_results()
         run_history = ex.run_history()
         run_data["config"] = config
+        run_data["problem_parameters"] = planner.environment.planning_problem_parameters.to_dict()
         save_run_data(run_data, run_history, result_path)
         print("run done ---------------------------------")
     return data
