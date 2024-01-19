@@ -3,7 +3,7 @@
 # Time limit is ten minutes (see "man sbatch")
 source bin/activate
 
-for PROBLEM_PARAMS in $(ls benchmark/problem_params)
+for PROBLEM_PARAMS in $(ls benchmark/problem_parameters)
 	do
 	export SCENARIO="DrivingSwarm;icra2024.yaml;icra2024.yml"
 	for PLANNER in $(ls benchmark/planner_config)
