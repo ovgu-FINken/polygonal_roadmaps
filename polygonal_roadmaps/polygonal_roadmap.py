@@ -126,7 +126,8 @@ class Executor():
     def step(self, plan: Plans):
         # advance agents
         logging.info(f"plan: {plan}")
-        assert plan.is_valid(self.env), f"plan {plan} is not valid"
+        # plan only has to be valid up until planning horizon, we will check validity of the transition anyway
+        #assert plan.is_valid(self.env), f"plan {plan} is not valid"
         self.history.append(self.env.state)
         self.plans.append(plan)
         state = advance_state_randomly(self.env, plan.get_next_state())
