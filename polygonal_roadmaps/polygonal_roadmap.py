@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from polygonal_roadmaps.environment import Environment, MapfInfoEnvironment
-from polygonal_roadmaps.planning import Planner, CBSPlanner, sum_of_cost, compute_solution_robustness, Plans
+from polygonal_roadmaps.planning import Planner, CBSPlanner, sum_of_cost, Plans
 from itertools import groupby
 import networkx as nx
 from pathlib import Path
@@ -76,6 +76,7 @@ class Executor():
         self.history = []
         self.plans = []
         self.time_frame = time_frame
+        self.finished = False
 
     def run(self, profiling=False, replan=None):
         print("executor run")
@@ -109,6 +110,7 @@ class Executor():
                     self.failed = not Plans(self.get_history_as_solution()).is_valid(self.env)
                     if self.failed:
                         logging.warn(f"plans in history are not valid: {self.history}")
+                    self.finished = True
                     return self.history
                 if self.replan:
                     # create new plan on updated state
@@ -176,7 +178,8 @@ class Executor():
         result["flowtime"] = sum([len(x) for x in self.history]) / len(self.env.state)
         #result["makespan"] = max([ sum_of_cost([solution[i]]) for i, _ in enumerate(self.env.goal)])
         result["sum_of_cost"] = sum_of_cost(solution, graph=self.env.g)
-        result["failed"] = self.failed
+        result["finished"] = self.finished
+        result["valid"] = self.failed
         #result["robustness"] = compute_solution_robustness(solution)
         result["astar"] = 0
         result["spacetime_astar"] = 0
