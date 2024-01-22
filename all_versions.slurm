@@ -23,7 +23,7 @@ do
 	done
 	sleep 5
 
-	export SCENARIO="DrivingSwarm;icra2021.yaml;icra2021.yml"
+	export SCENARIO="DrivingSwarm;icra2021_map_no_obstacle.yaml;icra2021.yml"
 	for PLANNER in $(ls benchmark/planner_config)
 	do
 		sleep 1
