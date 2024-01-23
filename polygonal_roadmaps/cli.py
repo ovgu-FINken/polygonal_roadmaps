@@ -1,4 +1,5 @@
 import argparse
+import traceback
 from typing import Iterable
 import pandas as pd
 import signal
@@ -253,6 +254,8 @@ def run_one(planner, result_path=None, config=None):
     except Exception as e:
         #ex.profile.disable()
         logging.warning(f'Exception occured during execution:\n{e}')
+        traceback.print_exc()
+
         #raise e
     finally:
         run_data = ex.run_results()

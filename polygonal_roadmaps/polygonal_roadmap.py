@@ -27,9 +27,10 @@ def next_state_is_valid(next_state, env):
     for s, ns in zip(env.state, next_state):
         if s is None:
             if ns is not None:
-                logging.warn("next state is not valid, agent is not allowed to move from None to a position")
                 if ns in env.goal:
                     logging.warn("next state is a goal position, likely the planner does not use the current state as start state")
+                    continue
+                logging.warn("next state is not valid, agent is not allowed to move from None to a position")
                 return False
         if ns is None:
             continue
@@ -51,10 +52,10 @@ def advance_state_randomly(env: Environment, next_state):
         return next_state
 
     
-    state = env.state
+    state = list(env.state)
     for _ in range(step_num):
         # get all agents that are not at their goal
-        agents = [i for i, s in enumerate(state) if s is not None and s != env.goal[i]]
+        agents = [i for i, s in enumerate(state) if s is not None and s != env.goal[i] and s != next_state[i]]
         progress_state = np.random.choice(agents)
         state[progress_state] = next_state[progress_state]
         state = replace_goal_with_none(state, env.goal)
