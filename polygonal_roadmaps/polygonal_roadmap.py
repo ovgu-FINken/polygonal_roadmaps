@@ -13,6 +13,7 @@ import logging
 
 import pandas as pd
 from random import shuffle
+import numpy as np
 
 def replace_goal_with_none(state, goal):
     return tuple([None if s == g else s for s, g in zip(state, goal)])
@@ -44,29 +45,25 @@ def next_state_is_valid(next_state, env):
 
 def advance_state_randomly(env: Environment, next_state):
     assert next_state_is_valid(next_state, env), f"transition{env.state} -> {next_state} is not valid, goal state is {env.goal}"
-    if not env.planning_problem_parameters.step_num:
-        return next_state
     step_num = env.planning_problem_parameters.step_num
-    state = env.state
-    if step_num >= len(state):
+    next_state = replace_goal_with_none(next_state, env.goal)
+    if not step_num or step_num >= len(env.state):
         return next_state
-    # the bitmask wil be [True, True, True .... False, False, False]
-    bitmask = [True] * step_num + [False] * (len(state) - step_num)
-    
-    # we randomize the oreder of the bitmask
-    shuffle(bitmask)
-    ret = []
-    for s, ns, b in zip(state, next_state, bitmask):
-        if b:
-            ret.append(ns)
-        else:
-            ret.append(s)
 
-    # retry if we did not make any progress, i.e. the state we progress is a wait action
-    # replanning should remove wait actions by the state change
-    if ret == state:
-        return advance_state_randomly(env, next_state)
-    return ret
+    
+    state = env.state
+    for _ in range(step_num):
+        # get all agents that are not at their goal
+        agents = [i for i, s in enumerate(state) if s is not None and s != env.goal[i]]
+        progress_state = np.random.choice(agents)
+        state[progress_state] = next_state[progress_state]
+        state = replace_goal_with_none(state, env.goal)
+        if state == next_state:
+            break
+        if state == env.goal:
+            break
+
+    return state
 
 class Executor():
     def __init__(self, environment: Environment, planner: Planner, time_frame: int = 1000) -> None:
@@ -84,6 +81,7 @@ class Executor():
             self.replan = replan
         else:
             self.replan = self.planner.replan_required
+
         if self.env.planning_problem_parameters.step_num: 
             if self.env.planning_problem_parameters.step_num < len(self.env.state):
                 self.replan = True
@@ -117,6 +115,10 @@ class Executor():
                     plan = self.planner.create_plan(self.env)
                 else:
                     plan = Plans([p[1:] for p in plan])
+                logging.warning(f"plan: {plan}")
+                logging.warning(f"state: {self.env.state}")
+                logging.warning(f"goal: {self.env.goal}")
+                logging.warning(f"goal_transition_valid: {next_state_is_valid(self.env.goal, self.env)}")
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
             self.failed = True
@@ -179,7 +181,7 @@ class Executor():
         #result["makespan"] = max([ sum_of_cost([solution[i]]) for i, _ in enumerate(self.env.goal)])
         result["sum_of_cost"] = sum_of_cost(solution, graph=self.env.g)
         result["finished"] = self.finished
-        result["valid"] = self.failed
+        result["valid"] = not self.failed
         #result["robustness"] = compute_solution_robustness(solution)
         result["astar"] = 0
         result["spacetime_astar"] = 0
