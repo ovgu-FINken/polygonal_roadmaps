@@ -20,9 +20,11 @@ def replace_goal_with_none(state, goal):
 
 def next_state_is_valid(next_state, env):
     if len(next_state) != len(env.state):
+        logging.warn("next state has different length than current state")
         return False
     # we shoud not get a plan without any progress though this is technically possible
     if next_state == env.state:
+        logging.warn("next state is equal to current state, this should not happen")
         return False
     for s, ns in zip(env.state, next_state):
         if s is None:
@@ -37,9 +39,11 @@ def next_state_is_valid(next_state, env):
         if ns == s:
             continue
         if not env.g.has_edge(s, ns):
+            logging.warn(f"next state is not valid, no edge from {s} to {ns} exists")
             return False
     nodes = [n for n in next_state if n is not None]
     if len(nodes) != len(set(nodes)):
+        logging.warn("next state is not valid, multiple agents are on the same position")
         return False
     
     return True
@@ -75,6 +79,8 @@ class Executor():
         self.plans = []
         self.time_frame = time_frame
         self.finished = False
+        self.lifelong = self.env.planning_problem_parameters.lifelong
+        self.goals_completed = 0
 
     def run(self, profiling=False, replan=None):
         print("executor run")
@@ -116,10 +122,14 @@ class Executor():
                     plan = self.planner.create_plan(self.env)
                 else:
                     plan = Plans([p[1:] for p in plan])
-                logging.warning(f"plan: {plan}")
-                logging.warning(f"state: {self.env.state}")
-                logging.warning(f"goal: {self.env.goal}")
-                logging.warning(f"goal_transition_valid: {next_state_is_valid(self.env.goal, self.env)}")
+                logging.info(f"plan: {plan}")
+                logging.info(f"state: {self.env.state}")
+                logging.info(f"goal: {self.env.goal}")
+                logging.info(f"goal_transition_valid: {next_state_is_valid(self.env.goal, self.env)}")
+                if self.goals_completed >= len(self.env.start)*10:
+                    logging.info("all goals completed")
+                    self.finished = True
+                    break
         except nx.NetworkXNoPath:
             logging.warning("planning failed")
             self.failed = True
@@ -135,9 +145,39 @@ class Executor():
         #assert plan.is_valid(self.env), f"plan {plan} is not valid"
         self.history.append(self.env.state)
         self.plans.append(plan)
-        state = advance_state_randomly(self.env, plan.get_next_state())
-        assert next_state_is_valid(state, self.env), f"transition{self.env.state} -> {state} is not valid, goal state is {self.env.goal}"
-        self.env.state = replace_goal_with_none(state, self.env.goal)
+        ## advance state
+
+        ## check goal state
+        # update goal or set state to None
+        self.advance_state(plan.get_next_state())
+
+        return self.env.state
+    
+    def advance_state(self, next_state):
+        if self.lifelong:
+            # update goals
+            self.advance_state_lifelong(next_state)
+            assert None not in self.env.state, f"state should not contain None: {self.env.state}"
+            return self.env.state
+
+        assert next_state_is_valid(next_state, self.env), f"transition{self.env.state} -> {next_state} is not valid, goal state is {self.env.goal}"
+        next_state = advance_state_randomly(self.env, next_state)
+        self.env.state = replace_goal_with_none(next_state, self.env.goal)
+        return self.env.state
+    
+    def advance_state_lifelong(self, next_state):
+        assert next_state_is_valid(next_state, self.env), f"transition{self.env.state} -> {next_state} is not valid, goal state is {self.env.goal}"
+        next_state = advance_state_randomly(self.env, next_state)
+
+        # if a state variable in next_state is None, this means a goal is reached, and we have to set a new goal
+        for i, s in enumerate(next_state):
+            if s is None:
+                # set current state to current goal
+                self.env.state[i] = self.env.goal[i]
+                # set new goal
+                self.env.goal[i] = self.env.get_next_goal(i)
+                self.replan = True
+                self.goals_completed += 1
         return self.env.state
 
     def get_history_as_dataframe(self):
@@ -182,6 +222,7 @@ class Executor():
         #result["makespan"] = max([ sum_of_cost([solution[i]]) for i, _ in enumerate(self.env.goal)])
         result["sum_of_cost"] = sum_of_cost(solution, graph=self.env.g)
         result["finished"] = self.finished
+        result["goals_completed"] = self.goals_completed
         result["valid"] = not self.failed
         #result["robustness"] = compute_solution_robustness(solution)
         result["astar"] = 0

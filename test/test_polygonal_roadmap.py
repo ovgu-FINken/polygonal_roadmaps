@@ -10,7 +10,7 @@ import unittest
 import networkx as nx
 import pandas as pd
 import tempfile
-from polygonal_roadmaps import planning, polygonal_roadmap, geometry
+from polygonal_roadmaps import executor, planning, geometry
 from polygonal_roadmaps.environment import MapfInfoEnvironment, RoadmapEnvironment, GraphEnvironment, Environment, PlanningProblemParameters
 from polygonal_roadmaps.planning import CBSPlanner, FixedPlanner, PrioritizedPlanner, CCRPlanner, PriorityAgentPlanner
 
@@ -24,8 +24,8 @@ class TestPlanningExecution(unittest.TestCase):
 
     def checkPlanner(self, planner_instance, *args, **kwargs):
         for env in self.envs:
-            executor = polygonal_roadmap.Executor(env, planner_instance(env, *args, **kwargs))
-            self.checkRun(executor)
+            exec = executor.Executor(env, planner_instance(env, *args, **kwargs))
+            self.checkRun(exec)
 
     def checkRun(self, executor):
         executor.run()
@@ -45,28 +45,28 @@ class TestPlanningExecution(unittest.TestCase):
 
         planner = FixedPlanner(env, plan=[(1, 2), (1, 3), (2, 4), (None, 5)])
 
-        executor = polygonal_roadmap.Executor(env, planner)
-        executor.replan = False
+        exec = executor.Executor(env, planner)
+        exec.replan = False
         # nothing happend yet, so history is empty
         # we want to save state and plans at that state
-        self.assertListEqual(executor.history, [])
-        executor.run()
-        self.assertListEqual(executor.history, [(1, 2), (1, 3), (None, 4)])
+        self.assertListEqual(exec.history, [])
+        exec.run()
+        self.assertListEqual(exec.history, [(1, 2), (1, 3), (None, 4)])
 
     def testRoadmapEnvironment(self):
         env = self.envs[1]
         prioritized_planner = PriorityAgentPlanner(env, priority_method="index")
-        executor = polygonal_roadmap.Executor(env, prioritized_planner, time_frame=50)
-        executor.run(replan=True)
+        exec = executor.Executor(env, prioritized_planner, time_frame=50)
+        exec.run(replan=True)
         # logging.warn(f'executer history: {executor.history}')
-        self.assertGreaterEqual(planning.compute_solution_robustness(executor.get_history_as_solution()),
+        self.assertGreaterEqual(planning.compute_solution_robustness(exec.get_history_as_solution()),
                                 1,
-                                msg=f"Path should be k-robust with k>=1\nk={planning.compute_solution_robustness(executor.get_history_as_solution())}\n{executor.get_history_as_solution()}")
-        self.assertEqual(len(prioritized_planner.environment.start), len(executor.history[0]))
-        self.assertEqual(len(prioritized_planner.environment.start), len(executor.history[-1]))
+                                msg=f"Path should be k-robust with k>=1\nk={planning.compute_solution_robustness(exec.get_history_as_solution())}\n{exec.get_history_as_solution()}")
+        self.assertEqual(len(prioritized_planner.environment.start), len(exec.history[0]))
+        self.assertEqual(len(prioritized_planner.environment.start), len(exec.history[-1]))
         
-        paths = executor.get_history_as_solution()
-        self.assertTrue(planning.check_nodes_connected(executor.env.g, paths))
+        paths = exec.get_history_as_solution()
+        self.assertTrue(planning.check_nodes_connected(exec.env.g, paths))
 
     def testMapfInfoEnvironment(self):
         scen_path = Path(os.path.dirname(os.path.realpath(__file__))) / "resources" / "random-32-32-10-even-1.scen"

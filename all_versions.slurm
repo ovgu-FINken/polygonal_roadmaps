@@ -13,7 +13,7 @@ do
 		do
 			sleep 1
 			mkdir -p logs/$PLANNER$SCENARIO/
-			sbatch -J "$PLANNER$MAP" --array 1-100 single_job.bash $SCENARIO N $PLANNER $PROBLEM_PARAMS
+			sbatch -J "$PLANNER$MAP" --array 1-100 single_job.bash $SCENARIO $N $PROBLEM_PARAMS
 		done
 		sleep 5
 
@@ -22,7 +22,7 @@ do
 		do
 			sleep 1
 			mkdir -p logs/$PLANNER$SCENARIO/
-			sbatch -J "$PLANNER$MAP" --array 1-100 single_job.bash $SCENARIO N $PLANNER $PROBLEM_PARAMS
+			sbatch -J "$PLANNER$MAP" --array 1-100 single_job.bash $SCENARIO $N $PROBLEM_PARAMS
 		done
 		sleep 5
 
@@ -31,7 +31,7 @@ do
 		do
 			sleep 1
 			mkdir -p logs/$PLANNER$SCENARIO/
-			sbatch -J "$PLANNER$MAP" --array 1-100 single_job.bash $SCENARIO N $PLANNER $PROBLEM_PARAMS
+			sbatch -J "$PLANNER$MAP" --array 1-100 single_job.bash $SCENARIO $N $PROBLEM_PARAMS
 		done
 		sleep 5
 	done

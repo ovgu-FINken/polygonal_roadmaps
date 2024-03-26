@@ -10,7 +10,7 @@ import glob
 import resource
 from tqdm import tqdm
 from pathlib import Path
-from polygonal_roadmaps import geometry, planning, polygonal_roadmap
+from polygonal_roadmaps import executor, geometry, planning
 from polygonal_roadmaps.environment import PlanningProblemParameters, Environment, RoadmapEnvironment, MapfInfoEnvironment
 from icecream import ic
 
@@ -33,7 +33,7 @@ def read_pickle(location):
         logging.warning(f'EOF while unpickle {location}')
     except TypeError:
         logging.warning(f'Type Error while unpickle {location}')
-    return polygonal_roadmap.RunResult([], None, {})
+    return executor.RunResult([], None, {})
 
 
 def load_results(path=None):
@@ -232,7 +232,7 @@ def load_run_data(result_path:Path):
 def run_one(planner, result_path=None, config=None):
     print("run one ---------------------------------")
     data = None
-    ex = polygonal_roadmap.Executor(planner.environment, planner)
+    ex = executor.Executor(planner.environment, planner)
     ex.failed = True
     try:
         print(ex.env)
@@ -275,6 +275,7 @@ def aggregate_results(result_path):
             record['history'] = Path(result_file).parent / "history.feather"
             
             data.append(pd.json_normalize(record))
+    assert len(data) > 0
     return pd.concat(data)
 
 def cli_main() -> None:

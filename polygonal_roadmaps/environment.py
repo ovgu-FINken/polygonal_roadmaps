@@ -1,3 +1,4 @@
+import warnings
 import networkx as nx
 import logging
 import pandas as pd
@@ -20,6 +21,7 @@ class PlanningProblemParameters:
     wait_action_cost: float = 1.0001
     pad_path: bool = False
     step_num: int | None = None
+    lifelong: bool = False
 
 
 def remove_edge_if_exists(g: nx.Graph, u, v) -> None:
@@ -90,7 +92,7 @@ def gen_example_graph(a, b):
 
 
 class Environment():
-    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=PlanningProblemParameters()) -> None:
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, goal_lists: list[tuple], planning_problem_parameters=PlanningProblemParameters()) -> None:
         self.planning_horizon = len(graph.nodes())
         self.planning_problem_parameters = planning_problem_parameters
         self.g = graph
@@ -129,6 +131,9 @@ Goal: {self.goal}
             return
         if 'pos' in self.g.nodes()[state]:
             return self.g.nodes()[state]['pos']
+    
+    def get_next_goal(self, goal_index):
+        return self.goal[goal_index]
 
 
 class GraphEnvironment(Environment):
@@ -213,11 +218,13 @@ class RoadmapEnvironment(Environment):
             wy = (-3, 1.5)
         if generator_points is None:
             generator_points = geometry.square_tiling(1.0, working_area_x=wx, working_area_y=wy)
-        graph = geometry.create_graph(generator_points,
-                                      working_area_x=wx,
-                                      working_area_y=wy,
-                                      offset=offset,
-                                      occupied_space=obstacles)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            graph = geometry.create_graph(generator_points,
+                                          working_area_x=wx,
+                                          working_area_y=wy,
+                                          offset=offset,
+                                          occupied_space=obstacles)
         start_nodes = ()
         goal_nodes = ()
         if start_positions is not None:
