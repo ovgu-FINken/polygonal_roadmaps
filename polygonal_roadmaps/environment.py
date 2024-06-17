@@ -92,7 +92,7 @@ def gen_example_graph(a, b):
 
 
 class Environment():
-    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, goal_lists: list[tuple], planning_problem_parameters=PlanningProblemParameters()) -> None:
+    def __init__(self, graph: nx.Graph, start: tuple, goal: tuple, planning_problem_parameters=PlanningProblemParameters()) -> None:
         self.planning_horizon = len(graph.nodes())
         self.planning_problem_parameters = planning_problem_parameters
         self.g = graph
