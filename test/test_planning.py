@@ -72,6 +72,12 @@ class TestPlanners(unittest.TestCase):
     
     def test_CCRv2(self):
         self.check_planner(CCRv2)
+        
+    def test_CCRv2_criticality(self):
+        self.check_planner(CCRv2, quality_metric='criticality')
+
+    def test_CCRv2_weighted_criticality(self):
+        self.check_planner(CCRv2, quality_metric='weighted_criticality')
 
     def test_CBS(self):
         self.check_planner(CBSPlanner)

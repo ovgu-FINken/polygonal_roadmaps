@@ -1299,13 +1299,14 @@ class BeliefState:
         self.priorities = {k: v / s for k, v in self.priorities.items()}
 
 class CCRAgent:
-    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3):
+    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3, quality_metric=None):
         self.g = graph.copy()
         for node in self.g.nodes():
             self.g.add_edge(node, node, weight=planning_problem_parameters.wait_action_cost)
         self.state = state
         self.goal = goal
         self.planning_problem_parameters = planning_problem_parameters
+        self.quality_metric = quality_metric
         self.belief: dict[int, BeliefState] = {}
         self.other_paths: dict[int, list] = {}
         self.index = index
@@ -1455,16 +1456,32 @@ class CCRAgent:
         return 0.5 * bs + 0.5 * self.belief[node]
 
     def compute_qualities(self, node):
+
         # compute qualities using flow graph
         if self.state is None or self.goal is None or self.state == self.goal:
             return BeliefState(node, {e[0]: 0.0 for e in self.g.in_edges(node)})
         options = [e for e, _ in self.g.in_edges(node)]
-        fg = self.compute_flow_graph()
-        qualities = self.compute_qualities_flow(fg, node, options)
-        bs = BeliefState(state=node, priorities={e: q for e, q in qualities})
-        #bs.normalize()
-        # logging.warn(f"bs: {bs}")
-        return bs
+        if self.quality_metric is None or self.quality_metric == "flow":
+            fg = self.compute_flow_graph()
+            qualities = self.compute_qualities_flow(fg, node, options)
+            bs = BeliefState(state=node, priorities={e: q for e, q in qualities})
+            #bs.normalize()
+            # logging.warn(f"bs: {bs}")
+            return bs
+        elif self.quality_metric == "criticality":
+            c_0 = discounted_criticalality(self.g, node, self.state, self.goal)
+            bs = BeliefState(state=node, priorities={e: discounted_criticalality(self.g, e[0], self.state, self.goal) - c_0 for e in options})
+        elif self.quality_metric == "weighted_criticality":
+            c_0 = criticality(self.g, node, self.state, self.goal)
+            bs_criticality = BeliefState(state=node, priorities={e: criticality(self.g, e[0], self.state, self.goal) - c_0 for e in options})
+            fg = self.compute_flow_graph()
+            qualities = self.compute_qualities_flow(fg, node, options)
+            bs_flow = BeliefState(state=node, priorities={e: q for e, q in qualities})
+            return bs_criticality * 0.9 + bs_flow * 0.1
+                
+        else:
+            raise NotImplementedError(f"{self.quality_metric} is not implemented")
+            
 
     def compute_flow_graph(self):
         fg = self.g.copy()
@@ -1561,6 +1578,52 @@ class CCRAgent:
         self.belief_changed = True
         del self.belief[node]
 
+from networkx.algorithms.connectivity import build_auxiliary_edge_connectivity
+from networkx.algorithms.flow import build_residual_network
+
+@lru_cache
+def cached_HR(graph: nx.Graph):
+    H = build_auxiliary_edge_connectivity(graph)
+    return H, build_residual_network(graph, "capacity")
+
+def discounted_criticalality(graph: nx.Graph, state:int, goal:int, discount_factor:float=0.5):
+    path = nx.shortest_path(graph, source=state, target=goal, weight="weight")
+    sum = 0
+    for t, n in enumerate(path):
+        sum += discount_factor ** t * criticality(graph, n, state, goal, **kwargs)
+    return sum
+
+@lru_cache
+def criticality(graph: nx.Graph, state:int, start: int, goal:int, **kwargs):
+    """Calculate discounted criticality of an edge in graph
+
+    :param graph: roadmap graph
+    :param state: starting node
+    :param start: node 1
+    :param goal: goal of the agent
+    :param dicscount: discount factor, defaults to 0.5
+    :return: returns the discounted criticality of the edge
+    """
+    
+    # critcality is defined to what happens to the existance of a path, given the removal of the neighbourhing edges of the node
+    # first find the path from start to goal, if the state is not on the path, criticality is 0
+    path = nx.shortest_path(graph, source=start, target=goal, weight="weight")
+    if state not in path:
+        return 0.0
+    # find all neighbours of the state
+    H = build_auxiliary_edge_connectivity(graph)
+    R = build_residual_network(H, "capacity")
+    
+    sum = 0
+    for n in graph.neighbors(state):
+        if n in path:
+            ec = nx.local_edge_connectivity(graph, state, n, auxiliary=H, residual=R)
+            if ec == 0:
+                sum += 0.0
+            else:
+                sum += 1.0 / ec
+    return sum
+                        
 
 class PriorityAgent:
     def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, index: int, limit=100, inertia:float=0.2, block_steps=3, priorities=None):
