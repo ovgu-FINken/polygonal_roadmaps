@@ -1470,10 +1470,10 @@ class CCRAgent:
             return bs
         elif self.quality_metric == "criticality":
             c_0 = discounted_criticalality(self.g, node, self.state, self.goal)
-            bs = BeliefState(state=node, priorities={e: discounted_criticalality(self.g, e[0], self.state, self.goal) - c_0 for e in options})
+            bs = BeliefState(state=node, priorities={e: discounted_criticalality(self.g, e[0], self.state, self.goal) - c_0 + np.random.rand()*0.01 for e in options})
         elif self.quality_metric == "weighted_criticality":
-            c_0 = criticality(self.g, node, self.state, self.goal)
-            bs_criticality = BeliefState(state=node, priorities={e: criticality(self.g, e[0], self.state, self.goal) - c_0 for e in options})
+            c_0 = discounted_criticalality(self.g, node, self.state, self.goal)
+            bs_criticality = BeliefState(state=node, priorities={e: discounted_criticalality(self.g, e[0], self.state, self.goal) - c_0 for e in options})
             fg = self.compute_flow_graph()
             qualities = self.compute_qualities_flow(fg, node, options)
             bs_flow = BeliefState(state=node, priorities={e: q for e, q in qualities})
