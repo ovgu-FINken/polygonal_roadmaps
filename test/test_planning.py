@@ -87,3 +87,7 @@ class TestPlanners(unittest.TestCase):
 
     def test_PrioIndex(self):
         self.check_planner(PriorityAgentPlanner, priority_method='index')
+
+
+    def test_StateValueAgent(self):
+        self.check_planner(StateValueAgentPlanner)

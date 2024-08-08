@@ -1,6 +1,6 @@
 from asyncio.log import logger
 from dataclasses import dataclass
-from typing import Iterable, Protocol, Any
+from typing import Callable, Iterable, Protocol, Any
 import numpy as np
 from numpy.typing import ArrayLike
 import networkx as nx
@@ -14,7 +14,7 @@ from functools import lru_cache
 import copy
 import random
 
-from polygonal_roadmaps.environment import Environment
+from polygonal_roadmaps.environment import Environment, PlanningProblemParameters
 import logging
 
 
@@ -1776,6 +1776,8 @@ class PriorityAgentPlanner(Planner):
                 priorities = {i: np.random.rand() for i, _ in enumerate(self.environment.get_state_goal_tuples())}
             elif priority_method == "same":
                 priorities = {i: 0 for i, _ in enumerate(self.environment.get_state_goal_tuples())}
+            else:
+                raise NotImplementedError
         
         self.agents = [
             PriorityAgent(self.g, sg[0], sg[1], self.environment.planning_problem_parameters, i, priorities=priorities)
@@ -1896,6 +1898,111 @@ class CCRv2(Planner):
         plans = [agent.get_plan() for agent in self.agents]
         return Plans(plans)
 
+@lru_cache
+def state_value_distance(graph: nx.Graph, goal: int, **kwargs):
+    return {k: v for k, v in nx.single_target_shortest_path_length(graph, goal)}
+
+@lru_cache
+def criticality_matrix(graph: nx.Graph, goal: int, **kwargs):
+    raise NotImplementedError
+
+class StateValueAgent():
+    graph: nx.Graph
+    state: int
+    goal: int
+    planning_problem_parameters: PlanningProblemParameters
+    other_state: dict = {}
+    index: int
+    
+
+    def __init__(self, graph: nx.Graph, state:int, goal:int, planning_problem_parameters, value_weights:dict={}, index:int=0) -> None:
+        self.graph = graph
+        self.state = state
+        self.goal = goal
+        self.planning_problem_parameters = planning_problem_parameters
+        self.value_weights = value_weights
+        if not self.value_weights:
+            self.value_weights = {"state_value_distance": -1.0}
+        self.index = index
+    
+    def value_function(self):
+        s = {n : 0 for n in self.graph.nodes()}
+        
+        for value_function, weight in self.value_weights.items():
+            if value_function == "state_value_distance":
+                values = state_value_distance(self.graph, self.goal)
+            elif value_function == "criticality_matrix":
+                values = criticality_matrix(self.graph, self.goal)
+            elif value_function == "agent_plan_penalty":
+                # value function that puts a penalty on other agents plans / values whatever
+                raise NotImplementedError
+            else:
+                raise NotImplementedError
+            for n, v in values.items():
+                s[n] += v * weight
+            pass
+        return s
+
+    def update_other_state(self, states):
+        self.other_state |= states
+        if self.index in self.other_state:
+            del self.other_state[self.index]
+        
+    def update_state(self, state):
+        self.state = state
+        
+    def get_state_values(self):
+        return self.value_function()
+    
+    def get_plan(self) -> Plans:
+        plan = [self.state]
+        while self.state is not None and self.state != self.goal:
+            plan.append( self.action_selection(state=plan[-1]) )
+            step_num = self.planning_problem_parameters.step_num if self.planning_problem_parameters.step_num else 10
+            if len(plan) >= step_num:
+                break
+        return plan
+        
+
+    def action_selection(self, action_set: list=None, state=None) -> Plans:
+        if state is None:
+            state = self.state
+        # get action set, i.e., the current state and its neighbours in the graph
+        if action_set is None:
+            action_set = set(self.graph.neighbors(state))
+            action_set |= {state}
+            action_set = list(action_set)
+        if len(action_set) == 1:
+            return action_set[0]
+        
+        # remove states of other agents from action set
+        action_set = [s for s in action_set if s is not None and s not in self.other_state.values()]
+
+        # get state values
+        state_values = self.get_state_values()        
+        action_values = {a: state_values[a] for a in action_set}
+
+        # return best action
+        return max(action_values, key=action_values.get)
+
+class StateValueAgentPlanner(Planner):
+    environment: Environment
+    agents: list[StateValueAgent]
+
+    def __init__(self, environment: Environment, **kwargs) -> None:
+        # create agents
+        self.agents = []
+        self.environment = environment
+        for i, sg in enumerate(environment.get_state_goal_tuples()):
+            self.agents.append(StateValueAgent(environment.g, sg[0], sg[1], environment.planning_problem_parameters, index=i, **kwargs))
+
+        #super.__init__(environment, **kwargs)
+
+    def create_plan(self, *_) -> Plans:
+        states = enumerate(self.environment.state)
+        for agent in self.agents:
+            agent.update_other_state(states)
+        return Plans([agent.get_plan() for agent in self.agents])
 
 if __name__ == "__main__":
     pass

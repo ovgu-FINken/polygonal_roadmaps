@@ -12,7 +12,6 @@ from icecream import ic
 import logging
 
 import pandas as pd
-from random import shuffle
 import numpy as np
 
 def replace_goal_with_none(state, goal):
