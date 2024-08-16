@@ -28,6 +28,10 @@ class Plans():
     def __getitem__(self, key):
         return self.plans[key]
     
+    def __str__(self):
+        s = "Plans:\n--" + "\n--".join([str(p) for p in self.plans])
+        return s
+    
     def as_state_list(self):
         return list(zip_longest(*self.plans, fillvalue=None))
     
@@ -288,10 +292,6 @@ def spatial_astar(G, source, target, weight=None) -> list:
     def spatial_heuristic(u, v):
         return np.linalg.norm(np.array(G.nodes()[u]['pos']) - np.array(G.nodes()[v]['pos']))
     return nx.astar_path(G, source=source, target=target, heuristic=spatial_heuristic, weight=weight)
-
-
-def compute_cost(G, target, weight=None):
-    return nx.shortest_path_length(G, target=target, weight=weight)
 
 
 def temporal_node_list(G, limit, node_constraints):
@@ -1996,13 +1996,380 @@ class StateValueAgentPlanner(Planner):
         for i, sg in enumerate(environment.get_state_goal_tuples()):
             self.agents.append(StateValueAgent(environment.g, sg[0], sg[1], environment.planning_problem_parameters, index=i, **kwargs))
 
-        #super.__init__(environment, **kwargs)
+        super.__init__(environment, **kwargs)
 
     def create_plan(self, *_) -> Plans:
         states = enumerate(self.environment.state)
         for agent in self.agents:
             agent.update_other_state(states)
         return Plans([agent.get_plan() for agent in self.agents])
+
+
+# implement learning based planners
+class LearningAgent:
+    alpha:float
+    beta:float
+    gamma:float
+    epsilon:float
+    evaporation_rate:float
+    dispersion_rate:float
+    method:str
+    episodes:int
+    graph:nx.Graph
+
+    def __init__(self,
+                 graph:nx.Graph,
+                 start,
+                 goal,
+                 nodelist,
+                 alpha:float=1.0,
+                 beta:float=1.0,
+                 gamma:float=1,
+                 delta:float=0.1,
+                 epsilon:float=0.3,
+                 evaporation_rate:float=0.1,
+                 dispersion_rate:float=0.1,
+                 collision_weight:float=0.8,
+                 method:str="aco",
+                 episodes:int=10,
+                 time_horizon:int=10) -> None:
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        self.epsilon = epsilon
+        self.evaporation_rate = evaporation_rate
+        self.dispersion_rate = dispersion_rate
+        self.collision_weight = collision_weight
+        self.method = method
+        self.time_horizon = time_horizon
+        self.episodes = episodes
+        self.start = start
+        self.goal = goal
+        self.G = graph
+        self.nodelist = nodelist
+        self.G_t = self.create_Gt()
+        self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
+        self.latest_episodes = []
+        
+        if method == "aco":
+            self.q_function = self.aco_decsion_values
+            self.selection_function = self.epsilon_fitness_proportional
+            self.update_q_function = self.update_q_aco
+            self._other_pheromones = np.zeros((len(self.nodelist), self.time_horizon))
+
+        elif method == "q":
+            pass
+        elif method == "sq":
+            self.q_function = self.sq_decsion_values
+            self.selection_function = self.epsilon_greedy
+            self.update_q_function = self.update_q_sq
+        else:
+            raise NotImplementedError
+        shortest = nx.shortest_path(self.G, self.start, self.goal)
+        assert shortest is not None
+
+
+    def set_occupancy(self, occupancy):
+        self._occupancy = occupancy
+        self._occupancy[:,:-1] += occupancy[:,1:]
+        self._occupancy[:,1:] += occupancy[:,:-1]
+        
+    def set_other_pheromones(self, other_pheromones):
+        self._other_pheromones = other_pheromones
+        # smear the other pheromones to adjacent time-steps, such that we avoid those time-steps also
+        self._other_pheromones[:,:-1] += other_pheromones[:,1:]
+        self._other_pheromones[:,1:] += other_pheromones[:,:-1]
+        
+    def get_occupancy(self):
+        occupancy = np.zeros_like(self._occupancy)
+        for e in self.latest_episodes:
+            for t, n in enumerate(e[:self.time_horizon]):
+                occupancy[self.nodelist.index(n), t] += 1
+        return occupancy
+
+    def update_state(self, state):
+        self.start = state
+        # reset Q-values
+        self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
+        nx.set_edge_attributes(self.G_t, 1.0, 'Q')
+
+    def create_Gt(self):
+        G_t = nx.DiGraph()
+        for t in range(self.time_horizon):
+            for v in self.nodelist:
+                G_t.add_node((v, t))
+                if t > 0:
+                    G_t.add_edge((v, t-1), (v, t))  # Wait action
+                    for neighbor in self.G.neighbors(v):
+                        G_t.add_edge((v, t-1), (neighbor, t))  # Move action
+        nx.set_edge_attributes(G_t, 1.0, 'Q')
+        return G_t
+    
+    def run_episodes(self, i=0):
+        episodes = []
+        for _ in range(self.episodes):
+            state, t = self.start, 0
+            episode = [state]
+            while state is not None and state != self.goal and t < self.time_horizon:
+                values = self.q_function(state, t)
+                #print(f"values: {values}")
+                state = self.selection_function(values)
+                #print(f"decision: {state}")
+                t += 1
+                episode.append(state)
+            # fill episodes with shortes path, if time horizon is reached
+            if state is None:
+                episode = episode[:-1]
+                if len(episode):
+                    episode += list(nx.shortest_path(self.G, episode[-1], self.goal))
+                else:
+                    continue
+            if state != self.goal:
+                episode += list(nx.shortest_path(self.G, episode[-1], self.goal))
+            episodes.append(episode)
+        self.latest_episodes = episodes
+        return episodes
+    
+    def iteration(self, i=0):
+        episodes = self.run_episodes(i=i)
+        self.update_q_function(episodes)
+    
+    def aco_other_pheromones(self, state, t):
+        return self._other_pheromones[self.nodelist.index(state), t]
+    
+    @lru_cache(maxsize=None)
+    def heuristic(self, state):
+        return nx.shortest_path_length(self.G, state, self.goal)
+
+    def aco_decsion_values(self, state, t):
+        neighbours = list(self.G_t.neighbors((state, t)))
+        if len(neighbours) == 0:
+            return {}
+        values = {}
+        for n in neighbours:
+            alpha = self.G_t[(state, t)][n]['Q'] ** self.alpha
+            beta = 1 / (1 + self.heuristic(n[0])) ** self.beta
+            gamma = 1 / (1 + self.aco_other_pheromones(*n)) ** self.gamma
+            delta = 1 / (1 + self._occupancy[self.nodelist.index(n[0]), n[1]]) ** self.delta
+            values[n[0]] = alpha * beta * gamma * delta
+            if delta!=1.0:
+                print("delta != 1.0")
+                print(f"n: {n[0]}, t: {n[1]}")
+                print(f"{alpha:.2f},{beta:.2f},{gamma:.2f},{delta:.2f} = {values[n[0]]:.2f}")
+        return values
+
+    def sq_decsion_values(self, state, t):
+        neighbours = list(self.G_t.neighbors((state, t)))
+        if len(neighbours) == 0:
+            return {}
+        values = {}
+        for n in neighbours:
+            Q = self.G_t[(state, t)][n]['Q']
+            
+            values[n[0]] = Q 
+        return values
+    
+    def fitness_proportional(self, values):
+        if not len (values):
+            return None
+        s = sum(values.values())
+        values = {k: v / s for k, v in values.items()}
+        decision = np.random.choice(list(values.keys()), p=list(values.values()))
+        return decision
+    
+    def greedy(self, values):
+        print("greedy")
+        if not len (values):
+            return None
+        return max(values, key=values.get)
+    
+    def epsilon_greedy(self, values):
+        if not len (values):
+            return None
+        if np.random.rand() < self.epsilon:
+            return self.random_selection(values)
+        return self.greedy(values)
+    
+    def epsilon_fitness_proportional(self, values):
+        if not len(values):
+            return None
+        if np.random.rand() < self.epsilon:
+            return self.random_selection(values)
+        return self.fitness_proportional(values)
+    
+    def random_selection(self, values):
+        if not len (values):
+            return None
+        return np.random.choice(list(values.keys()))
+    
+    def get_plan(self) -> list:
+        state = self.start
+        t = 0
+        plan = [state]
+        for _ in range(self.time_horizon-1):
+            values = self.q_function(state, t)
+            state = self.greedy(values)
+            t += 1
+            plan.append(state)
+            if state == self.goal:
+                break
+        return plan[:self.time_horizon]
+    
+    def get_episodes(self) -> list:
+        return self.latest_episodes
+    
+    def objetcive_length(self, path:list):
+        return len(path)
+    
+    def normalize_objective(self, values):
+        max_values = max(values)
+        min_values = min(values)
+        if min_values == max_values:
+            return [1.0 for _ in values]
+        return [(e- min_values) / (max_values - min_values) for e in values]
+    
+    def objetcive_collision_prob(self, path:list):
+        if not path:
+            return 0
+        collisions = 0
+        for t, n in enumerate(path[:self.time_horizon]):
+            collisions += self._occupancy[self.nodelist.index(n), t]
+        return collisions / len(path)
+
+    def update_q_aco(self, episodes:list):
+        # evaporation
+        for u, v in self.G_t.edges():
+            self.G_t[u][v]['Q'] *= (1 - self.evaporation_rate)
+
+        # pheromone deposition
+        # I should test if this actually improves things
+        # Only use unique episodes:
+        episodes = list(set([tuple(e) for e in episodes]))
+        # 0: shortest path, 1: longest path
+        # 0 is better
+        normalized_length = self.normalize_objective([self.objetcive_length(e) for e in episodes])
+        # 0: no collisions, 1: max collision prob
+        # 0 is better
+        normalized_collision_prob = self.normalize_objective([self.objetcive_collision_prob(e) for e in episodes])
+        # for combined score we have to make sure that we have a maximization obejective, i.e., 1-length, 1-collision_prob
+        combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
+        print(combined_score)
+        for episode, score in zip(episodes, combined_score):
+            # add pheromones to the edge s_t -> s_{t+1}
+            for s_p, s_n, t in zip(episode[:-1], episode[1:], range(0, len(episode)-1)):
+                if t+1 >= self.time_horizon:
+                    break
+                self.G_t[(s_p, t)][(s_n, t+1)]['Q'] += score
+        
+        # dispersion -- not implemented
+        self.disperse_pheromone()
+        
+    def get_q_matrix(self):
+        # we dont save the q-values themselves, but the ingoing values for each state
+        Q = np.zeros((len(self.nodelist), self.time_horizon))
+        for u, v in self.G_t.edges():
+            Q[self.nodelist.index(v[0]), v[1]] = self.G_t[u][v]['Q']
+        return Q
+
+    def disperse_pheromone(self):
+        # forward and backward dispersion of pheromones
+        node_pheromones = np.zeros((len(self.nodelist), self.time_horizon))
+        # gather pheromone values in adjacent nodes
+        for u, v in self.G_t.edges():
+            node_pheromones[self.nodelist.index(v[0]), v[1]] += self.G_t[u][v]['Q']
+            node_pheromones[self.nodelist.index(u[0]), u[1]] += self.G_t[u][v]['Q']
+        # add pheromones to the edges adjacent to each node
+        for u, v in self.G_t.edges():
+            self.G_t[u][v]['Q'] += self.dispersion_rate * node_pheromones[self.nodelist.index(u[0]), u[1]]
+            self.G_t[u][v]['Q'] += self.dispersion_rate * node_pheromones[self.nodelist.index(v[0]), v[1]]
+            
+    def update_simplified_q(self, episodes:list):
+        pass
+    
+    def update_q(self, episodes:list):
+        pass
+
+
+class LearningAgentPlanner(Planner):
+    def __init__(self,
+                 environment: Environment,
+                 alpha:float=1,
+                 beta:float=1,
+                 gamma:float=0.5,
+                 delta:float=0.5,
+                 epsilon:float=0.5,
+                 evaporation_rate:float=0.1, 
+                 dispersion_rate:float=0.001,
+                 collision_weight:float=0.5,
+                 method:str="aco",
+                 episodes:int=25,
+                 iterations=50,
+                 **kwargs) -> None:
+        # we need a nodelist, so we have a determistic ordering of the nodes of G
+        #super.__init__(self, environment, **kwargs)
+
+        self.method = method
+        self.environment = environment
+        self.iterations = iterations
+        self.nodelist = list(self.environment.g.nodes())
+        self.horizon = self.environment.planning_horizon
+        self.epsilon = epsilon
+        if environment.planning_problem_parameters.conflict_horizon is not None:
+            self.horizon = environment.planning_problem_parameters.conflict_horizon
+        self.agents = [
+            LearningAgent(
+                self.environment.g,
+                s, g,
+                self.nodelist,
+                alpha=alpha,
+                beta=beta,
+                gamma=gamma,
+                delta=delta,
+                epsilon=epsilon,
+                evaporation_rate=evaporation_rate,
+                dispersion_rate=dispersion_rate,
+                collision_weight=collision_weight,
+                method=method,
+                episodes=episodes,
+                time_horizon=self.horizon)
+            for s, g in self.environment.get_state_goal_tuples()]
+        
+    def run(self):
+        self.communicate()
+        for i in range(self.iterations):
+            for agent in self.agents:
+                agent.epsilon = self.epsilon * (i / self.iterations)
+                agent.iteration()
+                self.communicate()
+        return [agent.get_plan() for agent in self.agents]
+    
+    def communicate(self):
+        occupancy = sum([agent.get_occupancy() for agent in self.agents])
+        for agent in self.agents:
+            agent.set_occupancy((occupancy - agent.get_occupancy()) / (len(self.agents)-1))
+            
+        if self.method != "aco":
+            return
+
+        all_node_pheromones = sum([agent.get_q_matrix() for agent in self.agents])
+        for agent in self.agents:
+            agent.set_other_pheromones((all_node_pheromones - agent.get_q_matrix()) / (len(self.agents)-1))
+
+
+    def create_plan(self, *_) -> Plans:
+        self.run()
+        plans = Plans([agent.get_plan() for agent in self.agents])
+        if not plans.is_valid(self.environment):
+            print(plans)
+        #    raise nx.NetworkXNoPath
+        return plans
+    
+    def update_state(self, state):
+        self.environment.state = state
+        for s, agent in zip(state, self.agents):
+            agent.update_state(s)
+
 
 if __name__ == "__main__":
     pass
