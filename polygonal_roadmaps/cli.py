@@ -1,4 +1,6 @@
 import argparse
+from itertools import cycle
+from random import sample
 import traceback
 from typing import Iterable
 import pandas as pd
@@ -7,12 +9,13 @@ import yaml
 import pickle
 import logging
 import glob
-import resource
+#import resource
 from tqdm import tqdm
 from pathlib import Path
 from polygonal_roadmaps import executor, geometry, planning
-from polygonal_roadmaps.environment import PlanningProblemParameters, Environment, RoadmapEnvironment, MapfInfoEnvironment
+from polygonal_roadmaps.environment import GraphEnvironment, PlanningProblemParameters, Environment, RoadmapEnvironment, MapfInfoEnvironment
 from icecream import ic
+import networkx as nx
 
 class TimeoutError(Exception):
     pass
@@ -106,6 +109,7 @@ def run_all(args):
         numeric_level = getattr(logging, args.loglevel.upper(), None)
         logging.basicConfig(level=numeric_level, filename=args.logfile)
     if args.memlimit is not None:
+        import resource
         # set memlimit, arg is in GB
         softlimit, hardlimit = resource.getrlimit(resource.RLIMIT_AS)
         logging.info(f"sl: {softlimit}, hl: {hardlimit}")
@@ -113,6 +117,7 @@ def run_all(args):
         logging.info(f"set memlimit to {args.memlimit}Gb == {limit}b")
         resource.setrlimit(resource.RLIMIT_AS, (limit, hardlimit))
     if args.timelimit is not None:
+        import resource
         # set memlimit, arg is in GB
         softlimit, hardlimit = resource.getrlimit(resource.RLIMIT_CPU)
         logging.info(f"sl: {softlimit}, hl: {hardlimit}")
@@ -184,6 +189,8 @@ def env_generator(scen_str, n_agents=10, index=None, problem_parameters:str|None
             envs = load_mapf_scenarios(map_file, scen_type, n_agents, index=index, planning_problem_parameters=problem_parameters)
         case "DrivingSwarm", map_yml, scenario_yml:
             envs = load_driving_swarm_scenarios(map_yml, scenario_yml, n_agents, index=index, planning_problem_parameters=problem_parameters)
+        case "Graph", params:
+            envs = load_graph_based_scenarios(params, n_agents, index=index, planning_problem_parameters=problem_parameters)
     return envs
 
 
@@ -213,7 +220,122 @@ def load_mapf_scenarios(map_file, scentype, n_agents, index=None, planning_probl
     else:
         scenarios = [f"{scentype}/{map_file}-{scentype}-{index}.scen"]
     return (MapfInfoEnvironment(scen, n_agents=n_agents, planning_problem_parameters=planning_problem_parameters) for scen in scenarios)
+
+
+def load_graph_based_scenarios(params, n_agents, index=None, planning_problem_parameters=PlanningProblemParameters()) -> Iterable[Environment]:
+    type, *rest = params.split(".")
+    match type:
+        case "grid":
+            graph = grid_graph_generator(int(rest[0]), int(rest[1]))
+            start, goal = grid_start_goal_generator(graph, n_agents)
+        case "random_grid":
+            graph = grid_graph_generator(int(rest[0]), int(rest[1]))
+            start, goal = random_grid_start_goal_generator(graph, n_agents)
+        case "star":
+            graph = star_graph_generator(n_agents+1, int(rest[0]))
+            start, goal = star_start_goal_generator(graph, n_agents+1, int(rest[0]), empty_branch=False)
+        case "easy_star":
+            graph = star_graph_generator(n_agents+1, int(rest[0]))
+            start, goal = star_start_goal_generator(graph, n_agents+1, int(rest[0]), empty_branch=True)
+        case "linear":
+            graph = linear_graph_generator( int(rest[0]) )
+            start, goal = linear_start_goal_generator(graph, n_agents)
+    return [GraphEnvironment(graph, start, goal, planning_problem_parameters=planning_problem_parameters) for i in range(5)]
+
+
+def grid_graph_generator(width, height, **kwargs):
+    return nx.grid_2d_graph(width, height)
+
+
+def grid_start_goal_generator(G, n_agents, **kwargs):
+    width = max(node[0] for node in G.nodes()) + 1
+    height = max(node[1] for node in G.nodes()) + 1
     
+    left_positions = [(0, y) for y in range(height)]
+    right_positions = [(width - 1, y) for y in range(height)]
+    
+    max_agents = 2 * height
+    n_agents = min(n_agents, max_agents)
+    
+    left_cycle = cycle(left_positions)
+    right_cycle = cycle(right_positions)
+    
+    start_positions = []
+    goal_positions = []
+    for i in range(n_agents):
+        if i % 2 == 0:
+            start_positions.append(next(left_cycle))
+            goal_positions.append(next(right_cycle))
+        else:
+            start_positions.append(next(right_cycle))
+            goal_positions.append(next(left_cycle))
+    
+    return start_positions, goal_positions
+
+
+def random_grid_start_goal_generator(G, n_agents, **kwargs):
+    nodelist = list(G.nodes())
+    # draw random sample from nodelist
+    start_positions = sample(nodelist, n_agents)
+    goal_positions = sample(nodelist, n_agents)
+    return start_positions, goal_positions
+
+
+def passage_graph_generator(width, height, passage_length, **kwargs):
+    G = nx.Graph()
+    for x in range(width):
+        for y in range(height):
+            if x < (width - passage_length) // 2 or x >= (width + passage_length) // 2 or y == height // 2:
+                G.add_node((x, y))
+    
+    for (x1, y1) in G.nodes():
+        for (x2, y2) in G.nodes():
+            if abs(x1 - x2) + abs(y1 - y2) == 1:
+                G.add_edge((x1, y1), (x2, y2))
+    
+    return G
+
+
+def passage_start_goal_generator(G, **kwargs):
+    width = max(node[0] for node in G.nodes()) + 1
+    height = max(node[1] for node in G.nodes()) + 1
+    start_positions = [(0, height // 2), (width - 1, height // 2)]
+    goal_positions = [(width - 1, height // 2), (0, height // 2)]
+    return start_positions, goal_positions
+
+
+def star_graph_generator(n_branches, branch_length, **kwargs):
+    G = nx.Graph()
+    G.add_node('center')
+    for i in range(n_branches):
+        for j in range(1, branch_length + 1):
+            G.add_edge(f'branch_{i}_{j-1}', f'branch_{i}_{j}')
+        G.add_edge('center', f'branch_{i}_0')
+    return G
+
+
+def star_start_goal_generator(G, n_branches, branch_length, empty_branch=False, **kwargs):
+    start_positions = [f'branch_{i}_{branch_length}' for i in range(n_branches-1)]
+    if empty_branch:
+        # all go to the empty branch which is branch n_branches-1
+        goal_positions = [f'branch_{n_branches-1}_{branch_length}' for _ in range(n_branches-1)]
+    else:
+        # go to the next branch, leave the empty branch empty
+        goal_positions = [f'branch_{(i+1)%(n_branches-1)}_{branch_length}' for i in range(n_branches-1)]
+    return start_positions, goal_positions
+
+
+def linear_graph_generator(length, **kwargs):
+    return nx.path_graph(length)
+
+
+def linear_start_goal_generator(G, n_agents, **kwargs):
+    length = len(G)
+    start_positions = [ (i + 2) // 2 if i % 2 == 0 else length - 2 - i // 2 for i in range(n_agents)]
+    goal_positions = [ (i + 2) // 2 if i % 2 != 0 else length - 2 - i // 2 for i in range(n_agents)]
+    
+    return start_positions, goal_positions
+
 
 def save_run_data(run_data:dict, run_history:pd.DataFrame, result_path:Path):
     logging.info(f"save run data to {result_path}, with {len(run_history)} steps")
