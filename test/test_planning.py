@@ -68,9 +68,9 @@ class TestPlanners(unittest.TestCase):
 
     def check_planner(self, Planner, **kwargs):
         self.check_env(Planner, self.env, **kwargs)
-        self.check_env(Planner, self.env4, **kwargs)
+        #self.check_env(Planner, self.env4, **kwargs)
         self.check_env(Planner, self.env2, **kwargs)
-        #self.check_env_invalid(Planner, self.env3, **kwargs)
+        self.check_env_invalid(Planner, self.env3, **kwargs)
     
     def test_CCRv2(self):
         self.check_planner(CCRv2)

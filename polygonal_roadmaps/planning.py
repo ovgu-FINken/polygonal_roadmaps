@@ -2263,7 +2263,7 @@ class LearningAgent:
         # 0 is better
         normalized_collision_prob = self.normalize_objective([self.objetcive_collision_prob(e) for e in episodes])
         # for combined score we have to make sure that we have a maximization obejective, i.e., 1-length, 1-collision_prob
-        combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
+        combined_score = normalized_length # (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
         
         #print(combined_score)
         for episode, score in zip(episodes, combined_score):
