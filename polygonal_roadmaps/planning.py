@@ -1766,9 +1766,11 @@ class PriorityAgentPlanner(Planner):
         self.replan_required = self.environment.planning_problem_parameters.conflict_horizon is None
         self.history = []
         self.g = self.environment.get_graph().to_directed()
+        self.priority_method = priority_method
         compute_normalized_weight(self.g, self.environment.planning_problem_parameters.weight_name)
         self.weight = "weight"
         priorities = None
+
         if priority_method is not None:
             if priority_method == "index":
                 priorities = {i: i for i, _ in enumerate(self.environment.get_state_goal_tuples())}
@@ -1776,20 +1778,63 @@ class PriorityAgentPlanner(Planner):
                 priorities = {i: np.random.rand() for i, _ in enumerate(self.environment.get_state_goal_tuples())}
             elif priority_method == "same":
                 priorities = {i: 0 for i, _ in enumerate(self.environment.get_state_goal_tuples())}
+            elif priority_method == "shortest":
+                priorities = self.compute_sortest_paths_priorities()
+            elif priority_method == "longest":
+                priorities = self.compute_longest_paths_priorities()
             else:
                 raise NotImplementedError
-        
+            
         self.agents = [
             PriorityAgent(self.g, sg[0], sg[1], self.environment.planning_problem_parameters, i, priorities=priorities)
             for i, sg in enumerate(self.environment.get_state_goal_tuples())
         ]
+
+    def compute_sortest_paths_priorities(self)-> int: 
+            shortest_paths = []
+
+            for i,sg in enumerate(self.environment.get_state_goal_tuples()):
+                path_len = nx.shortest_path_length(self.g,  sg[0] , sg[1], weight=self.weight)
+                shortest_paths.append((i,path_len))
+
+            shortest_paths.sort(key=lambda x: x[1])
+            priorities = {i: rank for rank, (i, _) in enumerate(shortest_paths)}
+            
+            print(priorities)
+            return priorities
+
+    def compute_longest_paths_priorities(self)-> int: 
+            shortest_paths = []
+
+            for i,sg in enumerate(self.environment.get_state_goal_tuples()):
+                path_len = nx.shortest_path_length(self.g,  sg[0] , sg[1], weight=self.weight)
+                shortest_paths.append((i,path_len))
+
+            shortest_paths.sort(key=lambda x: x[1], reverse=True)
+            priorities = {i: rank for rank, (i, _) in enumerate(shortest_paths)}
+            
+            print(priorities)
+            return priorities
+
     
     def create_plan(self, *_) -> Plans:
         self.update_state(self.environment.state)
-        self.planning_loop()
+        
         # post-process plans to right format:
+        if self.priority_method is not None:
+            if self.priority_method == "shortest":
+                priorities = self.compute_sortest_paths_priorities()
+            elif self.priority_method == "longest":
+                priorities = self.compute_longest_paths_priorities()
+
+            if self.priority_method == "shortest" or self.priority_method == "longest":
+                for agent in self.agents:
+                    agent.priorities = priorities
+
+        self.planning_loop()
         plans = [agent.get_plan() for agent in self.agents]
         return Plans(plans)
+    
 
     def update_state(self, state):
         for i, a in enumerate(self.agents):

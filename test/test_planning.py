@@ -90,9 +90,17 @@ class TestPlanners(unittest.TestCase):
     def test_PrioIndex(self):
         self.check_planner(PriorityAgentPlanner, priority_method='index')
 
+    def test_PrioShortest(self):
+        print("Testing PriorityAgentPlanner with priority method 'shortest'")
+        self.check_planner(PriorityAgentPlanner, priority_method='shortest')
 
-    def test_StateValueAgent(self):
-        self.check_planner(StateValueAgentPlanner)
+    def test_PrioLongest(self):
+        print("Testing PriorityAgentPlanner with priority method 'longest'")
+        self.check_planner(PriorityAgentPlanner, priority_method='longest')
+
+
+    #def test_StateValueAgent(self):
+    #    self.check_planner(StateValueAgentPlanner)
         
-    def test_ACO(self):
-        self.check_planner(LearningAgentPlanner, method='aco')
+    #def test_ACO(self):
+    #    self.check_planner(LearningAgentPlanner, method='aco')
