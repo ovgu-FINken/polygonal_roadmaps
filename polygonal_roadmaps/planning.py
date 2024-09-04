@@ -2094,6 +2094,13 @@ class LearningAgent:
         self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
         nx.set_edge_attributes(self.G_t, 1.0, 'Q')
 
+    def update_goal(self, goal):
+        self.goal = goal
+        self.heuristic.cache_clear()
+        # reset Q-values
+        self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
+        nx.set_edge_attributes(self.G_t, 1.0, 'Q')
+
     def create_Gt(self):
         G_t = nx.DiGraph()
         for t in range(self.time_horizon):
@@ -2111,22 +2118,22 @@ class LearningAgent:
         for _ in range(self.episodes):
             state, t = self.start, 0
             episode = [state]
-            while state is not None and state != self.goal and t < self.time_horizon:
+            while state is not None:
                 values = self.q_function(state, t)
-                #print(f"values: {values}")
                 state = self.selection_function(values)
-                #print(f"decision: {state}")
-                t += 1
                 episode.append(state)
+                t += 1
+                if t >= self.time_horizon:
+                    break
+                if state == self.goal:
+                    break
             # fill episodes with shortes path, if time horizon is reached
             if state is None:
                 episode = episode[:-1]
-                if len(episode):
-                    episode += list(nx.shortest_path(self.G, episode[-1], self.goal))
-                else:
+                if not len(episode):
                     continue
-            if state != self.goal:
-                episode += list(nx.shortest_path(self.G, episode[-1], self.goal))
+            if episode[-1] != self.goal:
+                episode = episode + list(nx.shortest_path(self.G, episode[-1], self.goal))
             episodes.append(episode)
         self.latest_episodes = episodes
         return episodes
@@ -2153,10 +2160,13 @@ class LearningAgent:
             gamma = 1 / (1 + self.aco_other_pheromones(*n)) ** self.gamma
             delta = 1 / (1 + self._occupancy[self.nodelist.index(n[0]), n[1]]) ** self.delta
             values[n[0]] = alpha * beta * gamma * delta
-            if delta!=1.0:
-                print("delta != 1.0")
-                print(f"n: {n[0]}, t: {n[1]}")
-                print(f"{alpha:.2f},{beta:.2f},{gamma:.2f},{delta:.2f} = {values[n[0]]:.2f}")
+            if np.isnan(values[n[0]]):
+                values[n[0]] = 0
+                logging.warning(f"NAN-value in decsion function: {alpha:.2f},{beta:.2f},{gamma:.2f},{delta:.2f} = {values[n[0]]:.2f}")
+            #if delta!=1.0:
+            #    print("delta != 1.0")
+            #    print(f"n: {n[0]}, t: {n[1]}")
+            #    print(f"{alpha:.2f},{beta:.2f},{gamma:.2f},{delta:.2f} = {values[n[0]]:.2f}")
         return values
 
     def sq_decsion_values(self, state, t):
@@ -2179,7 +2189,7 @@ class LearningAgent:
         return decision
     
     def greedy(self, values):
-        print("greedy")
+        #print("greedy")
         if not len (values):
             return None
         return max(values, key=values.get)
@@ -2254,7 +2264,8 @@ class LearningAgent:
         normalized_collision_prob = self.normalize_objective([self.objetcive_collision_prob(e) for e in episodes])
         # for combined score we have to make sure that we have a maximization obejective, i.e., 1-length, 1-collision_prob
         combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
-        print(combined_score)
+        
+        #print(combined_score)
         for episode, score in zip(episodes, combined_score):
             # add pheromones to the edge s_t -> s_{t+1}
             for s_p, s_n, t in zip(episode[:-1], episode[1:], range(0, len(episode)-1)):

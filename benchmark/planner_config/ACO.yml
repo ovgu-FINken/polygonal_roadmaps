@@ -1,0 +1,3 @@
+planner:  LearningAgentPlanner
+planner_args:
+  priority_method: index

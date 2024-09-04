@@ -53,6 +53,7 @@ class TestPlanners(unittest.TestCase):
         self.env2.planning_problem_parameters = PlanningProblemParameters(conflict_horizon=100)
         # simple graph, not working (no path from start to goal for both agents without a conflict)
         self.env3 = GraphEnvironment(graph=gen_example_graph(5, 1), start=('a', 'e'), goal=('e', 'a'), planning_problem_parameters=PlanningProblemParameters(conflict_horizon=100))
+        self.env4 = cli.env_generator('Graph;star.1', n_agents=2)[0]
   
     def check_env(self, Planner, env, **kwargs):
         planner = Planner(env, **kwargs)
@@ -67,6 +68,7 @@ class TestPlanners(unittest.TestCase):
 
     def check_planner(self, Planner, **kwargs):
         self.check_env(Planner, self.env, **kwargs)
+        self.check_env(Planner, self.env4, **kwargs)
         self.check_env(Planner, self.env2, **kwargs)
         #self.check_env_invalid(Planner, self.env3, **kwargs)
     
