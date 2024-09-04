@@ -540,6 +540,201 @@ def nx_shortest(*args, **kwargs):
     return 1e100
 
 
+class PBSNode:
+    def __init__(self, p, h : list[list[int]] = [], l : list[list[int]] = []) -> None:
+        self.paths : list[list[int]] = copy.deepcopy(p)
+
+       # generate empty higher priority list if not given
+        if (h == []) :
+            self.higher_priorities = []
+            for _ in range(len(p)) :
+                self.higher_priorities.append([])
+        else :
+            self.higher_priorities = copy.deepcopy(h)
+
+        # generate empty lower priority list if not given
+        if (l == []) :
+            self.lower_priorities = []
+            for _ in range(len(p)) :
+                self.lower_priorities.append([])
+        else :
+            self.lower_priorities = copy.deepcopy(l)
+
+class PBS:
+    def __init__(self, env : Environment, max_iter : int = 10000) -> None:
+        self.start_goal = env.get_state_goal_tuples()
+        self.env = env
+        self.number_agents = len(self.start_goal)
+        self.g = env.get_graph()
+        self.max_iter = max_iter
+        self.node_stack = []
+        self.solution = None
+
+        for start, goal in self.start_goal:
+            if start not in self.g.nodes() or goal not in self.g.nodes():
+                raise nx.NodeNotFound()
+        
+        self.root = None  
+
+
+    def setup(self) :
+        if (self.root == None) :
+            # create starting paths
+            temp_paths : list[list[int]] = []
+            for i in range(self.number_agents) :
+                temp_paths.append(spacetime_astar(self.g, self.start_goal[i][0], self.start_goal[i][1])[0])
+
+            self.root = PBSNode(temp_paths)
+
+        self.node_stack = [self.root]
+    
+    def run(self, stack_method : str = "BFS") :
+        self.setup()
+        self.stack_method = stack_method
+
+        for i in range(self.max_iter) :
+            if (len(self.node_stack) == 0) :
+                logging.warning(f'PBS-Stack is empty. No more PBS-Nodes to check')
+                break
+            node : PBSNode = self.node_stack.pop(0)
+            if (self.step(node)) :
+                self.solution = node
+                return
+
+        raise nx.NetworkXNoPath()
+
+    def step(self, N : PBSNode) -> bool :
+
+        # get all collisions 
+        all_conflicts = compute_all_k_conflicts(N.paths)
+
+        # has no collision -> valid solution        
+        if (len(all_conflicts) == 0) :
+            return True
+
+        t : int = all_conflicts[0][1]
+        colliding_robots : list[int] = []
+
+        # search for first collision (more specific, robots in that collision)
+        for i in range(len(all_conflicts)) :
+            if (all_conflicts[i][1] < t) :
+                colliding_robots = [all_conflicts[i][0]]
+                t = all_conflicts[i][1]
+                continue
+            if (all_conflicts[i][1] == t) and (len(colliding_robots) < 2) :
+                colliding_robots.append(all_conflicts[i][0])
+
+
+        # only works with 2 robots in a collision (if more than 2 are participants, first found first used)
+        if (len(colliding_robots) != 2) :
+            print("finding first colliding robots went wrong \n  expected size : 2 | found size : " + str(len(colliding_robots)))
+            exit(-1)
+
+
+        # go through all colliding robots of the first collision
+        for i in range(len(colliding_robots)) :
+            node : PBSNode = PBSNode(N.paths, N.higher_priorities, N.lower_priorities)
+
+            # append new higher / lower priorities
+            node.lower_priorities[colliding_robots[1-i]].append(colliding_robots[i])
+            node.higher_priorities[colliding_robots[i]].append(colliding_robots[1-i])
+
+            success : bool = self.update_Plan(node, colliding_robots[i])
+            if (success) :
+                self.node_stack.append(node)
+        
+        return False
+
+    def update_Plan(self, N : PBSNode, robot_id : int) -> bool :
+        candidats : list[int] = [robot_id]
+        corrected : list[int] = []
+
+        while (len(candidats) > 0) :
+            cur_robot : int = candidats.pop()
+            higher_prio : list[int] = N.higher_priorities[cur_robot]
+
+            # get all higher prio paths for collision check
+            paths : list[list[int]] = [N.paths[cur_robot]]
+            for k in range(len(higher_prio)) :
+                paths.append[N.paths[higher_prio[k]]]
+            
+            
+            path_conflicts = compute_all_k_conflicts(paths)
+            for i in range(len(path_conflicts)) :
+
+                if (path_conflicts[i][0] != cur_robot) :
+                    continue
+                
+                # cyclic corrections encountered, abort calculation
+                if (cur_robot in corrected) :
+                    return False
+                else : 
+                    corrected.append(cur_robot)
+
+                # get new corrected path
+                N.paths[cur_robot] = spacetime_astar(self.g, 
+                    self.start_goal[cur_robot][0], self.start_goal[cur_robot][1], 
+                    node_constraints=self.generate_constraints(N, higher_prio))[0]
+                
+
+                # add new candidats that may need path corrections
+                for t in range(len(N.lower_priorities[cur_robot])) :
+                    added_robot : int = N.lower_priorities[cur_robot][t]
+                    if (candidats.count(added_robot) == 0) :
+                        candidats.append(added_robot)
+                
+                break
+                  
+        return True
+
+    def generate_constraints(self, N : PBSNode, h : list[int]) -> list[NodeConstraint] :
+        constr : list[NodeConstraint] = []
+        
+        for k in range(len(h)) :
+            cur_robot : int = h[k]
+
+            for i, node in enumerate(N.paths[cur_robot][:len(N.paths[cur_robot])]):
+                # we need to check, that there is no other edge with more priority used for this node
+                # if i==0, this causes a negative time in the constraint --- however, we do not plan for this so the constraint is not used
+                constr.add((node, i-1))
+                constr.add((node, i))
+                constr.add((node, i+1))
+        return constr
+    
+   
+    def update_state(self, state):
+        self.env.state = state
+        assert len(state) == len(self.start_goal)
+        self.start_goal = [(s, g) if s is not None else (g, g) for s, (_, g) in zip(state, self.start_goal)]
+        for start, _ in self.start_goal:
+            if (start is not None) and (start not in self.g.nodes()):
+                raise nx.NodeNotFound()
+            
+        self.root = None
+        self.iteration_counter = 0
+
+
+
+class PBSPlanner(Planner):
+    def __init__(self, environment: Environment, **kwargs) -> None:
+        planning_problem_parameters = environment.planning_problem_parameters
+        # initialize the planner.
+        # if the horizon is not None, we want to replan after execution of one step
+        self.replan_required = planning_problem_parameters.conflict_horizon is not None
+        self.kwargs = kwargs
+        self.environment = environment
+        self.pbs = PBS(self.environment)
+
+    def create_plan(self, env: Environment, *_):
+        self.pbs.update_state(env.state)
+        self.pbs.run()
+        if self.pbs.solution != None :
+            return Plans(self.pbs.solution.paths)
+
+        raise nx.NetworkXNoPath()
+
+
+
 class CBSNode:
     def __init__(self, constraints: frozenset[NodeConstraint] = frozenset()):
         self.children = ()
