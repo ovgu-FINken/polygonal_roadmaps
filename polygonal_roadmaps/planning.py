@@ -566,6 +566,7 @@ class PBS:
         self.env = env
         self.number_agents = len(self.start_goal)
         self.g = env.get_graph()
+        compute_normalized_weight(self.g, self.env.planning_problem_parameters.weight_name)
         self.max_iter = max_iter
         self.node_stack = []
         self.solution = None
@@ -606,13 +607,13 @@ class PBS:
     def step(self, N : PBSNode) -> bool :
 
         # get all collisions 
-        all_conflicts = compute_all_k_conflicts(N.paths)
+        all_conflicts = list(compute_all_k_conflicts(N.paths))
 
         # has no collision -> valid solution        
         if (len(all_conflicts) == 0) :
             return True
 
-        t : int = all_conflicts[0][1]
+        t : int = all_conflicts[0].conflicting_agents
         colliding_robots : list[int] = []
 
         # search for first collision (more specific, robots in that collision)
@@ -724,6 +725,7 @@ class PBSPlanner(Planner):
         self.kwargs = kwargs
         self.environment = environment
         self.pbs = PBS(self.environment)
+        
 
     def create_plan(self, env: Environment, *_):
         self.pbs.update_state(env.state)
