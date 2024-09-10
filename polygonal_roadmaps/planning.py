@@ -2029,7 +2029,7 @@ class LearningAgent:
                  epsilon:float=0.3,
                  evaporation_rate:float=0.1,
                  dispersion_rate:float=0.1,
-                 collision_weight:float=0.8,
+                 collision_weight:float=0.5,
                  method:str="aco",
                  episodes:int=10,
                  time_horizon:int=10) -> None:
@@ -2048,15 +2048,15 @@ class LearningAgent:
         self.goal = goal
         self.G = graph
         self.nodelist = nodelist
-        self.G_t = self.create_Gt()
         self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
+        self.Q = np.ones_like(self._occupancy)
         self.latest_episodes = []
         
         if method == "aco":
             self.q_function = self.aco_decsion_values
             self.selection_function = self.epsilon_fitness_proportional
             self.update_q_function = self.update_q_aco
-            self._other_pheromones = np.zeros((len(self.nodelist), self.time_horizon))
+            self._other_q = np.zeros((len(self.nodelist), self.time_horizon))
 
         elif method == "q":
             pass
@@ -2075,11 +2075,11 @@ class LearningAgent:
         self._occupancy[:,:-1] += occupancy[:,1:]
         self._occupancy[:,1:] += occupancy[:,:-1]
         
-    def set_other_pheromones(self, other_pheromones):
-        self._other_pheromones = other_pheromones
+    def set_other_q(self, other_q):
+        self._other_q = other_q
         # smear the other pheromones to adjacent time-steps, such that we avoid those time-steps also
-        self._other_pheromones[:,:-1] += other_pheromones[:,1:]
-        self._other_pheromones[:,1:] += other_pheromones[:,:-1]
+        self._other_q[:,:-1] += other_q[:,1:]
+        self._other_q[:,1:] += other_q[:,:-1]
         
     def get_occupancy(self):
         occupancy = np.zeros_like(self._occupancy)
@@ -2088,43 +2088,32 @@ class LearningAgent:
                 occupancy[self.nodelist.index(n), t] += 1
         return occupancy
 
-    def update_state(self, state):
+    def update_state(self, state, reset_q:bool=True):
         self.start = state
-        # reset Q-values
-        self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
-        nx.set_edge_attributes(self.G_t, 1.0, 'Q')
+        #self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
+        self.Q = np.ones_like(self._occupancy)
+        # we assume that the pheromones are shifted in time, i.e., the old state is removed from G_t and the new state is at t=1 and becomes t=0
 
     def update_goal(self, goal):
         self.goal = goal
         self.heuristic.cache_clear()
         # reset Q-values
-        self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
-        nx.set_edge_attributes(self.G_t, 1.0, 'Q')
+        self._occupancy = np.zeros_like(self._occupancy)
+        self.Q = np.ones_like(self._occupancy)
 
-    def create_Gt(self):
-        G_t = nx.DiGraph()
-        for t in range(self.time_horizon):
-            for v in self.nodelist:
-                G_t.add_node((v, t))
-                if t > 0:
-                    G_t.add_edge((v, t-1), (v, t))  # Wait action
-                    for neighbor in self.G.neighbors(v):
-                        G_t.add_edge((v, t-1), (neighbor, t))  # Move action
-        nx.set_edge_attributes(G_t, 1.0, 'Q')
-        return G_t
-    
     def run_episodes(self, i=0):
         episodes = []
         for _ in range(self.episodes):
-            state, t = self.start, 0
+            state = self.start
             episode = [state]
             while state is not None:
+                # get q-values for next time-step
+                t = len(episode)
+                if t >= self.time_horizon:
+                    break
                 values = self.q_function(state, t)
                 state = self.selection_function(values)
                 episode.append(state)
-                t += 1
-                if t >= self.time_horizon:
-                    break
                 if state == self.goal:
                     break
             # fill episodes with shortes path, if time horizon is reached
@@ -2141,27 +2130,29 @@ class LearningAgent:
     def iteration(self, i=0):
         episodes = self.run_episodes(i=i)
         self.update_q_function(episodes)
+        return episodes
     
     def aco_other_pheromones(self, state, t):
-        return self._other_pheromones[self.nodelist.index(state), t]
+        return self._other_q[self.nodelist.index(state), t]
     
     @lru_cache(maxsize=None)
     def heuristic(self, state):
         return nx.shortest_path_length(self.G, state, self.goal)
 
     def aco_decsion_values(self, state, t):
-        neighbours = list(self.G_t.neighbors((state, t)))
+        neighbours = list(self.G.neighbors(state)) + [state]
         if len(neighbours) == 0:
             return {}
         values = {}
         for n in neighbours:
-            alpha = self.G_t[(state, t)][n]['Q'] ** self.alpha
-            beta = 1 / (1 + self.heuristic(n[0])) ** self.beta
-            gamma = 1 / (1 + self.aco_other_pheromones(*n)) ** self.gamma
-            delta = 1 / (1 + self._occupancy[self.nodelist.index(n[0]), n[1]]) ** self.delta
-            values[n[0]] = alpha * beta * gamma * delta
-            if np.isnan(values[n[0]]):
-                values[n[0]] = 0
+            alpha = self.Q[self.nodelist.index(n), t] ** self.alpha
+            h = self.heuristic(n)
+            beta = 1 / (1 + h) ** self.beta
+            gamma = 1 / (1 + self.aco_other_pheromones(n, t)) ** self.gamma
+            delta = 1 #/ (1 + self._occupancy[self.nodelist.index(n), t+1]) ** self.delta
+            values[n] = alpha * beta * gamma * delta
+            if np.isnan(values[n]):
+                values[n] = 0
                 logging.warning(f"NAN-value in decsion function: {alpha:.2f},{beta:.2f},{gamma:.2f},{delta:.2f} = {values[n[0]]:.2f}")
             #if delta!=1.0:
             #    print("delta != 1.0")
@@ -2170,14 +2161,7 @@ class LearningAgent:
         return values
 
     def sq_decsion_values(self, state, t):
-        neighbours = list(self.G_t.neighbors((state, t)))
-        if len(neighbours) == 0:
-            return {}
-        values = {}
-        for n in neighbours:
-            Q = self.G_t[(state, t)][n]['Q']
-            
-            values[n[0]] = Q 
+        raise NotImplementedError()
         return values
     
     def fitness_proportional(self, values):
@@ -2215,16 +2199,17 @@ class LearningAgent:
     
     def get_plan(self) -> list:
         state = self.start
-        t = 0
         plan = [state]
         for _ in range(self.time_horizon-1):
-            values = self.q_function(state, t)
+            values = self.q_function(state, len(plan))
             state = self.greedy(values)
-            t += 1
             plan.append(state)
             if state == self.goal:
                 break
-        return plan[:self.time_horizon]
+        plan = plan[:self.time_horizon]
+        if plan[-1] != self.goal:
+            plan = plan + list(nx.shortest_path(self.G, plan[-1], self.goal))
+        return plan
     
     def get_episodes(self) -> list:
         return self.latest_episodes
@@ -2237,7 +2222,7 @@ class LearningAgent:
         min_values = min(values)
         if min_values == max_values:
             return [1.0 for _ in values]
-        return [(e- min_values) / (max_values - min_values) for e in values]
+        return [(e - min_values) / (max_values - min_values) for e in values]
     
     def objetcive_collision_prob(self, path:list):
         if not path:
@@ -2249,8 +2234,7 @@ class LearningAgent:
 
     def update_q_aco(self, episodes:list):
         # evaporation
-        for u, v in self.G_t.edges():
-            self.G_t[u][v]['Q'] *= (1 - self.evaporation_rate)
+        self.Q = self.Q * (1 - self.evaporation_rate)
 
         # pheromone deposition
         # I should test if this actually improves things
@@ -2263,38 +2247,27 @@ class LearningAgent:
         # 0 is better
         normalized_collision_prob = self.normalize_objective([self.objetcive_collision_prob(e) for e in episodes])
         # for combined score we have to make sure that we have a maximization obejective, i.e., 1-length, 1-collision_prob
-        combined_score = normalized_length # (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
+        combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
         
         #print(combined_score)
         for episode, score in zip(episodes, combined_score):
             # add pheromones to the edge s_t -> s_{t+1}
-            for s_p, s_n, t in zip(episode[:-1], episode[1:], range(0, len(episode)-1)):
+            for t, s in enumerate(episode):
                 if t+1 >= self.time_horizon:
                     break
-                self.G_t[(s_p, t)][(s_n, t+1)]['Q'] += score
+                self.Q[s, t] += score
         
-        # dispersion -- not implemented
         self.disperse_pheromone()
         
     def get_q_matrix(self):
-        # we dont save the q-values themselves, but the ingoing values for each state
-        Q = np.zeros((len(self.nodelist), self.time_horizon))
-        for u, v in self.G_t.edges():
-            Q[self.nodelist.index(v[0]), v[1]] = self.G_t[u][v]['Q']
-        return Q
+        return self.Q
 
     def disperse_pheromone(self):
-        # forward and backward dispersion of pheromones
-        node_pheromones = np.zeros((len(self.nodelist), self.time_horizon))
-        # gather pheromone values in adjacent nodes
-        for u, v in self.G_t.edges():
-            node_pheromones[self.nodelist.index(v[0]), v[1]] += self.G_t[u][v]['Q']
-            node_pheromones[self.nodelist.index(u[0]), u[1]] += self.G_t[u][v]['Q']
-        # add pheromones to the edges adjacent to each node
-        for u, v in self.G_t.edges():
-            self.G_t[u][v]['Q'] += self.dispersion_rate * node_pheromones[self.nodelist.index(u[0]), u[1]]
-            self.G_t[u][v]['Q'] += self.dispersion_rate * node_pheromones[self.nodelist.index(v[0]), v[1]]
-            
+        # here we add q-value to neighbors in time and space.
+        qplus = np.zeros_like(self.Q) 
+        self.Q = self.Q + qplus
+
+        
     def update_simplified_q(self, episodes:list):
         pass
     
@@ -2309,7 +2282,7 @@ class LearningAgentPlanner(Planner):
                  beta:float=1,
                  gamma:float=0.5,
                  delta:float=0.5,
-                 epsilon:float=0.5,
+                 epsilon:float=0.1,
                  evaporation_rate:float=0.1, 
                  dispersion_rate:float=0.001,
                  collision_weight:float=0.5,
@@ -2365,7 +2338,7 @@ class LearningAgentPlanner(Planner):
 
         all_node_pheromones = sum([agent.get_q_matrix() for agent in self.agents])
         for agent in self.agents:
-            agent.set_other_pheromones((all_node_pheromones - agent.get_q_matrix()) / (len(self.agents)-1))
+            agent.set_other_q((all_node_pheromones - agent.get_q_matrix()) / (len(self.agents)-1))
 
 
     def create_plan(self, *_) -> Plans:
