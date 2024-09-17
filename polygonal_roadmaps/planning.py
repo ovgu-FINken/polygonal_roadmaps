@@ -2258,6 +2258,7 @@ class LearningAgent:
     method:str
     episodes:int
     graph:nx.Graph
+    discount:float
 
     def __init__(self,
                  graph:nx.Graph,
@@ -2274,7 +2275,9 @@ class LearningAgent:
                  collision_weight:float=0.5,
                  method:str="aco",
                  episodes:int=10,
-                 time_horizon:int=10) -> None:
+                 time_horizon:int=10,
+                 discount:float=0.9
+                 ) -> None:
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -2293,6 +2296,7 @@ class LearningAgent:
         self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
         self.Q = np.ones_like(self._occupancy)
         self.latest_episodes = []
+        self.discount = discount
         
         if method == "aco":
             self.q_function = self.aco_decsion_values
@@ -2301,11 +2305,25 @@ class LearningAgent:
             self._other_q = np.zeros((len(self.nodelist), self.time_horizon))
 
         elif method == "q":
-            pass
+            self.q_function = self.sq_decsion_values
+            self.selection_function = self.epsilon_greedy
+            self.update_q_function = self.update_q_rl
+            self.dispersion_rate = 0.0
+            self.evaporation_rate = 0.0
+
         elif method == "sq":
             self.q_function = self.sq_decsion_values
             self.selection_function = self.epsilon_greedy
             self.update_q_function = self.update_q_sq
+            self.dispersion_rate = 0.0
+            self.evaporation_rate = 0.0
+            
+        elif method == "diffq":
+            self.q_function = self.diffq_decsion_values
+            self.selection_function = self.epsilon_greedy
+            self.update_q_function = self.update_q_diff
+            self.Q = np.zeros_like(self._occupancy)
+            
         else:
             raise NotImplementedError
         shortest = nx.shortest_path(self.G, self.start, self.goal)
@@ -2330,11 +2348,13 @@ class LearningAgent:
                 occupancy[self.nodelist.index(n), t] += 1
         return occupancy
 
-    def update_state(self, state, reset_q:bool=True):
+    def update_state(self, state, reset_q:bool=False):
         self.start = state
-        #self._occupancy = np.zeros((len(self.nodelist), self.time_horizon))
-        self.Q = np.ones_like(self._occupancy)
-        # we assume that the pheromones are shifted in time, i.e., the old state is removed from G_t and the new state is at t=1 and becomes t=0
+        if reset_q:
+            self.Q = np.ones_like(self._occupancy)
+        # shift time-steps, add ones to right column
+        self.Q = np.roll(self.Q, -1, axis=1)
+        self.Q[:, -1] = 0.0
 
     def update_goal(self, goal):
         self.goal = goal
@@ -2403,8 +2423,36 @@ class LearningAgent:
         return values
 
     def sq_decsion_values(self, state, t):
-        raise NotImplementedError()
+        neighbours = list(self.G.neighbors(state)) + [state]
+        if len(neighbours) == 0:
+            return {}
+        values = {}
+        for n in neighbours:
+            q = self.Q[self.nodelist.index(n), t] 
+            h = self.heuristic(n)
+            c = 1 - self._occupancy[self.nodelist.index(n), t]
+            if c < 0:
+                c = 0
+            values[n] = 1 / (1+h) * self.beta + self.gamma * c + (1-self.gamma - self.beta) * q
         return values
+    
+    def diffq_decsion_values(self, state, t):
+        neighbours = list(self.G.neighbors(state)) + [state]
+        if len(neighbours) == 0:
+            return {}
+        values = {}
+        for n in neighbours:
+            q = self.Q[self.nodelist.index(n), t] 
+            h = self.heuristic(n)
+            c = 1 - self._occupancy[self.nodelist.index(n), t]
+            if c < 0:
+                c = 0
+            values[n] = h + self.beta*q + self.gamma*c
+        max_v = max(values.values())
+        for k in values:
+            values[k] = 1.0 + max_v - values[k]
+        return values
+        
     
     def fitness_proportional(self, values):
         if not len (values):
@@ -2439,11 +2487,15 @@ class LearningAgent:
             return None
         return np.random.choice(list(values.keys()))
     
-    def get_plan(self) -> list:
+    def get_plan(self, inertia_epsilon=0.3, last_plan=None) -> list:
         state = self.start
         plan = [state]
         for _ in range(self.time_horizon-1):
             values = self.q_function(state, len(plan))
+            if last_plan is not None:
+                for n in values:
+                    if n in last_plan:
+                        values[n] += inertia_epsilon
             state = self.greedy(values)
             plan.append(state)
             if state == self.goal:
@@ -2456,8 +2508,12 @@ class LearningAgent:
     def get_episodes(self) -> list:
         return self.latest_episodes
     
-    def objetcive_length(self, path:list):
+    def objective_length(self, path:list):
+        # introduce wait cost
         return len(path)
+    
+    def objective_differential_length(self, path:list):
+        return len(path) - nx.shortest_path_length(self.G, path[0], path[-1])
     
     def normalize_objective(self, values):
         max_values = max(values)
@@ -2466,13 +2522,17 @@ class LearningAgent:
             return [1.0 for _ in values]
         return [(e - min_values) / (max_values - min_values) for e in values]
     
-    def objetcive_collision_prob(self, path:list):
+    def collision_prob_list(self, path:list, t_0=0):
+        return [self._occupancy[self.nodelist.index(n)][t] for t, n in enumerate(path[:(self.time_horizon-t_0)])]
+
+    def objetcive_collision_prob(self, path:list, t_0=0):
         if not path:
             return 0
-        collisions = 0
-        for t, n in enumerate(path[:self.time_horizon]):
-            collisions += self._occupancy[self.nodelist.index(n), t]
-        return collisions / len(path)
+        collisions = self.collision_prob_list(path, t_0=t_0)
+        p = 0
+        for t, c in enumerate(collisions):
+            p += self.discount**t * c
+        return p
 
     def update_q_aco(self, episodes:list):
         # evaporation
@@ -2481,15 +2541,16 @@ class LearningAgent:
         # pheromone deposition
         # I should test if this actually improves things
         # Only use unique episodes:
-        episodes = list(set([tuple(e) for e in episodes]))
+        #episodes = list(set([tuple(e) for e in episodes]))
         # 0: shortest path, 1: longest path
         # 0 is better
-        normalized_length = self.normalize_objective([self.objetcive_length(e) for e in episodes])
+        normalized_length = self.normalize_objective([self.objective_length(e) for e in episodes])
         # 0: no collisions, 1: max collision prob
         # 0 is better
-        normalized_collision_prob = self.normalize_objective([self.objetcive_collision_prob(e) for e in episodes])
+        collision_prob = sum([self.objetcive_collision_prob(e) for e in episodes]) / len(episodes)
         # for combined score we have to make sure that we have a maximization obejective, i.e., 1-length, 1-collision_prob
-        combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(normalized_collision_prob))
+        combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(collision_prob))
+        combined_score = self.normalize_objective(combined_score)
         
         #print(combined_score)
         for episode, score in zip(episodes, combined_score):
@@ -2501,6 +2562,46 @@ class LearningAgent:
         
         self.disperse_pheromone()
         
+    def update_q_sq(self, episodes:list):
+        #episodes = list(set([tuple(e) for e in episodes]))
+        normalized_length = self.normalize_objective([self.objective_length(e) for e in episodes])
+        collision_prob = [self.objetcive_collision_prob(e) for e in episodes]
+        combined_score = (1-self.collision_weight) * (1 - np.array(normalized_length)) + self.collision_weight * (1 - np.array(collision_prob))
+        combined_score = self.normalize_objective(combined_score)
+        for episode, score in zip(episodes, combined_score):
+
+            for t, s in enumerate(episode[:self.time_horizon]):
+                self.Q[s,t] = (1-self.alpha)*self.Q[s,t] + self.alpha*score
+                
+    def update_q_rl(self, episodes:list):
+        for episode in episodes:
+            collisions = self.collision_prob_list(episode)
+            
+            for t in range(self.time_horizon):
+                if t >= len(episode):
+                    break
+                l = self.objective_length(episode[t:])
+                c = [self.discount ** i * c for i, c in enumerate(collisions[t:])]
+                c = np.clip(np.sum(c), 0, 1)
+                s = episode[t]
+                score = (1-self.collision_weight) / (l + 1) + self.collision_weight * (1.0 - c)
+                Q = (1-self.alpha)*self.Q[s,t] + self.alpha*score
+                self.Q[s,t] = Q
+                
+    def update_q_diff(self, episodes:list):
+        for episode in episodes:
+            collisions = self.collision_prob_list(episode)
+            
+            for t in range(self.time_horizon):
+                if t >= len(episode):
+                    break
+                length = self.objective_differential_length(episode[t:])
+                c = [self.discount ** i * c for i, c in enumerate(collisions[t:])]
+                s = episode[t]
+                score = (1-self.collision_weight) * length + self.collision_weight * sum(c)
+                Q = (1-self.alpha)*self.Q[s,t] + self.alpha*score
+                self.Q[s,t] = Q
+        
     def get_q_matrix(self):
         return self.Q
 
@@ -2510,13 +2611,6 @@ class LearningAgent:
         self.Q = self.Q + qplus
 
         
-    def update_simplified_q(self, episodes:list):
-        pass
-    
-    def update_q(self, episodes:list):
-        pass
-
-
 class LearningAgentPlanner(Planner):
     def __init__(self,
                  environment: Environment,
